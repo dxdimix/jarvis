@@ -13,6 +13,7 @@ PC に常駐する個人用 AI エージェントです。
 
 - 画面は Vercel に公開します。ログインした本人だけが使えます。
 - 会話は Supabase の `messages` テーブルに保存します。
+- 画面の右上に、PC の常駐プログラムが動いているか（PC: オンライン / オフライン）を表示します。
 - PC 常駐プログラムは Supabase に外向きにつなぐだけです。PC のポートは開けないので、ルーターの設定は要りません。
 - PC 常駐プログラムは Claude Code を起動したままにして使い回し、返事を書いた端から画面に表示します。話しかけてから 1〜2 秒ほどで返事が出始めます。
 - PC 常駐プログラムが止まっている間に送った発言は、次に起動したときにまとめて返事をします。
@@ -50,11 +51,35 @@ PC に常駐する個人用 AI エージェントです。
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = Publishable key
 3. 以後は、main ブランチに push すると本番に、それ以外のブランチに push するとプレビュー用の URL に自動で公開されます。
 
-### 4. PC（常駐プログラム）
-1. Node.js 22 以上と Claude Code を入れ、`claude` コマンドでログインしておきます。
-2. このリポジトリを PC に置き、`.env.example` を `.env.local` にコピーして、Supabase の値を入れます。
-3. Windows は `start-windows.bat` をダブルクリック、Mac / Linux は `npm install` の後に `npm run agent` で起動します。
-   「ジャービス、起動しました。」と出れば準備完了です。
+### 4. PC（常駐プログラム、Windows）
+スタートメニューで「PowerShell」と入力して開き、次の1行を貼り付けて Enter を押します。
+
+```
+irm https://raw.githubusercontent.com/dxdimix/jarvis/main/setup-windows.ps1 | iex
+```
+
+次のことを自動で行います。
+
+1. Node.js と Claude Code を確認し、入っていなければインストールする
+2. ジャービスをホームフォルダの `jarvis` にダウンロードする
+3. 設定ファイル `.env.local` をメモ帳で開く（Supabase の値を 4 か所に貼り付けて保存し、メモ帳を閉じる）
+4. Claude Code にログインしているか確認する
+5. PC の起動時に、画面なしで自動で動くように登録する（スタートアップ）
+6. デスクトップに「ジャービスを起動」「ジャービスを停止」を作り、ジャービスを起動する
+
+ブラウザの画面の右上に「PC: オンライン」と出れば準備完了です。
+アプリを最新版に更新したいときも、同じ1行を実行します。設定ファイルはそのまま引き継ぎます。
+
+- 動きの記録は `jarvis\agent\logs\agent.log` に残ります。
+- 途中で止まった場合は、10 秒後に自動で起動し直します。
+- 動いている様子を黒い画面で見たいときは、「ジャービスを停止」の後に `start-windows.bat` をダブルクリックします。
+- Mac / Linux は、`npm install` の後に `npm run agent` で起動します。
+
+## 使い方
+- 文字で送るか、マイクのボタンを押して話しかけます（Chrome / Edge / Safari）。マイクで話した声は、文字にするためにブラウザの提供元（Google や Apple など）のサーバーに送られます。
+- 「読み上げ」がオンのとき、返事を 1 文ずつ声で読み上げます。声は選べます（Windows の Edge では「Microsoft Keita Online」などが自然です）。
+- 「会話モード」をオンにすると、返事を聞き終えたあと自動でマイクがオンになり、手を使わずに会話を続けられます。
+- スマホでは、ブラウザの「ホーム画面に追加」でアプリのように開けます。
 
 ## 開発
 
@@ -65,7 +90,7 @@ npm run dev
 | コマンド | 内容 |
 | --- | --- |
 | `npm run dev` | 画面をローカルで起動（http://localhost:3000） |
-| `npm run agent` | PC 常駐プログラムを起動 |
+| `npm run agent` | PC 常駐プログラムを起動（二重には起動しない） |
 | `npm run lint` / `npm test` / `npm run build` | 確認（GitHub Actions でも同じものが動く） |
 | `npm run db:new -- <名前>` | テーブル変更用の SQL ファイルを作る |
 | `npm run db:push` | SQL ファイルの変更を Supabase に反映 |

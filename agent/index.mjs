@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { ClaudeSession } from "./lib/claude-session.mjs";
+import { acquireSingleInstance } from "./lib/single-instance.mjs";
 import { PERSONA, buildFirstTurn, formatTurn } from "./lib/prompt.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,9 +29,16 @@ const STREAM_INTERVAL_MS = 300;
 const WORKDIR = path.join(ROOT, "agent", "workspace");
 const PERSONA_FILE = "jarvis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
 
+// 終了コード 3 は「自動で起動し直さなくてよい」の合図（windows/start-hidden.vbs が見る）。
+const EXIT_NO_RESTART = 3;
+
 if (!SUPABASE_URL || !SECRET_KEY) {
   console.error("SUPABASE_URL と SUPABASE_SECRET_KEY を .env.local に設定してください（.env.example を参照）。");
-  process.exit(1);
+  process.exit(EXIT_NO_RESTART);
+}
+if (!(await acquireSingleInstance("jarvis-agent"))) {
+  console.error("ジャービスの常駐プログラムは、すでに別の画面で動いています。");
+  process.exit(EXIT_NO_RESTART);
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
 fs.writeFileSync(path.join(WORKDIR, PERSONA_FILE), PERSONA);
@@ -200,6 +208,12 @@ function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+// 画面に「PC が動いている」ことを知らせる（Realtime の Presence）。中身は起動時刻だけ。
+const presence = supabase.channel("jarvis-presence");
+presence.subscribe((status) => {
+  if (status === "SUBSCRIBED") presence.track({ online_at: new Date().toISOString() });
+});
 
 supabase
   .channel("jarvis-agent")

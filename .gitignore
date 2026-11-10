@@ -47,3 +47,5 @@ supabase/.branches
 
 # PC 常駐プログラムの作業フォルダ
 agent/workspace/
+
+agent/logs/

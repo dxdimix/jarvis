@@ -15,7 +15,12 @@ PC に常駐する個人用 AI エージェント。利用者は本人のみ。
   - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` を付けて起動する（付けないと書き終えてから完了まで約 3 秒余計にかかる）。
   - Claude Code を起動した直後の最初の発言にだけ、Supabase の会話履歴を添える。`JARVIS_MAX_TURNS`（既定 40）回で起動し直す。
   - 人格は `agent/lib/prompt.mjs` の PERSONA。`--append-system-prompt-file` で渡す（コマンド引数に日本語を直接書くと Windows で崩れるため）。
+  - 二重起動の防止は `agent/lib/single-instance.mjs`（名前付きパイプ / Unix ソケット）。終了コード 3 は「起動し直さなくてよい」の合図。
+  - Realtime の Presence（チャンネル `jarvis-presence`）で、画面に PC のオンライン / オフラインを知らせる。
+  - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-jarvis.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
   - Claude Code に使わせる道具は `JARVIS_TOOLS`（既定 WebSearch）。PC 操作の機能はここを広げて足していく。
+- 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。
+- スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。
 - Claude API は使わない（利用者の希望：費用をかけない）。claude.ai などのブラウザ画面の自動操作もしない（規約違反）。
 
 ## 守ること

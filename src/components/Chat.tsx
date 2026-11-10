@@ -1,16 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Message } from "@/lib/types";
+import { takeSpeakable } from "@/lib/speech";
+import { useAgentOnline } from "@/hooks/useAgentOnline";
+import { useSpeaker } from "@/hooks/useSpeaker";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 const HISTORY_LIMIT = 100;
+
+// 読み上げなどの設定はこのブラウザにだけ保存する（保存できない環境でも動くようにする）。
+function loadSetting(key: string, fallback: string) {
+  try {
+    return localStorage.getItem(`jarvis.${key}`) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function saveSetting(key: string, value: string) {
+  try {
+    localStorage.setItem(`jarvis.${key}`, value);
+  } catch {}
+}
 
 export function Chat({ supabase, session }: { supabase: SupabaseClient; session: Session }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
+  const [speakOn, setSpeakOn] = useState(() => loadSetting("speak", "on") === "on");
+  const [talkMode, setTalkMode] = useState(() => loadSetting("talk", "off") === "on");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const online = useAgentOnline(supabase);
+
+  // この画面を開いてから届いた返事だけを読み上げる（過去の履歴は読まない）。
+  const liveIds = useRef(new Set<string>());
+  const spokenUpTo = useRef(new Map<string, number>());
+  // 返事を読み終えたら、会話モードならマイクを再びオンにする。
+  const listenAfterSpeech = useRef(false);
+
+  const send = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content) return false;
+      setError("");
+      const { error } = await supabase.from("messages").insert({ role: "user", content });
+      if (error) {
+        setError(`送信できませんでした: ${error.message}`);
+        return false;
+      }
+      return true;
+    },
+    [supabase],
+  );
+
+  const recognition = useSpeechRecognition((text) => {
+    send(text);
+  });
+  const { start: startListening } = recognition;
+
+  const speaker = useSpeaker(() => {
+    if (listenAfterSpeech.current) {
+      listenAfterSpeech.current = false;
+      if (talkMode) startListening();
+    }
+  }, loadSetting("voice", "") || null);
+  const { speak, cancel: cancelSpeech, isSpeaking } = speaker;
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +85,9 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
     const channel = supabase
       .channel("messages")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        if (payload.eventType === "INSERT" && (payload.new as Message).role === "assistant") {
+          liveIds.current.add((payload.new as Message).id);
+        }
         setMessages((prev) => {
           if (payload.eventType === "DELETE") {
             return prev.filter((m) => m.id !== (payload.old as Message).id);
@@ -50,38 +108,123 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
     };
   }, [supabase]);
 
+  // 返事が書き足されるたびに、書き終わった文から読み上げる。
+  useEffect(() => {
+    for (const m of messages) {
+      if (m.role !== "assistant" || !liveIds.current.has(m.id)) continue;
+      const final = m.status !== "processing";
+      const from = spokenUpTo.current.get(m.id) ?? 0;
+      const { chunk, next } = takeSpeakable(m.content, from, final);
+      spokenUpTo.current.set(m.id, next);
+      if (speakOn && chunk) speak(chunk);
+      if (final) {
+        liveIds.current.delete(m.id);
+        if (talkMode) {
+          // 読み上げ中なら読み終えてから、読み上げないならすぐにマイクをオンにする。
+          if (speakOn && isSpeaking()) listenAfterSpeech.current = true;
+          else startListening();
+        }
+      }
+    }
+  }, [messages, speakOn, talkMode, speak, isSpeaking, startListening]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const content = input.trim();
-    if (!content) return;
+    const text = input;
     setInput("");
-    setError("");
-    const { error } = await supabase.from("messages").insert({ role: "user", content });
-    if (error) {
-      setError(`送信できませんでした: ${error.message}`);
-      setInput(content);
-    }
+    if (!(await send(text))) setInput(text);
+  }
+
+  function onMic() {
+    if (recognition.listening) return recognition.stop();
+    cancelSpeech(); // 話しかけるときは読み上げを止める
+    recognition.start();
+  }
+
+  function toggleSpeak() {
+    const next = !speakOn;
+    setSpeakOn(next);
+    saveSetting("speak", next ? "on" : "off");
+    if (!next) cancelSpeech();
+  }
+
+  function toggleTalk() {
+    const next = !talkMode;
+    setTalkMode(next);
+    saveSetting("talk", next ? "on" : "off");
+    if (next && !recognition.listening) recognition.start();
+    if (!next) recognition.stop();
   }
 
   // 返事を書き始めた発言には「考えています…」を出さない。
   const repliedIds = new Set(messages.map((m) => m.reply_to).filter((id): id is string => id !== null));
-  const waiting =messages.some((m) => m.role === "user" && (m.status === "pending" || m.status === "processing"));
+  const waiting = messages.some((m) => m.role === "user" && (m.status === "pending" || m.status === "processing"));
 
   return (
     <div className="mx-auto flex h-dvh w-full max-w-2xl flex-col px-4">
-      <header className="flex items-center justify-between py-4">
-        <h1 className="text-xl font-semibold tracking-widest text-cyan-400">J.A.R.V.I.S.</h1>
+      <header className="flex flex-wrap items-center justify-between gap-2 py-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold tracking-widest text-cyan-400">J.A.R.V.I.S.</h1>
+          <span className="flex items-center gap-1.5 text-xs text-slate-400" data-testid="agent-status">
+            <span
+              className={
+                "inline-block h-2 w-2 rounded-full " +
+                (online ? "bg-emerald-400" : online === false ? "bg-slate-500" : "bg-amber-400")
+              }
+            />
+            {online ? "PC: オンライン" : online === false ? "PC: オフライン" : "PC: 確認中"}
+          </span>
+        </div>
         <div className="flex items-center gap-3 text-sm text-slate-400">
-          <span>{session.user.email}</span>
+          <span className="hidden sm:inline">{session.user.email}</span>
           <button onClick={() => supabase.auth.signOut()} className="underline hover:text-slate-200">
             ログアウト
           </button>
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2 pb-3 text-xs">
+        {speaker.supported && (
+          <button
+            onClick={toggleSpeak}
+            aria-pressed={speakOn}
+            className={"rounded-full border px-3 py-1 " + (speakOn ? "border-cyan-500 text-cyan-300" : "border-slate-700 text-slate-400")}
+          >
+            読み上げ {speakOn ? "オン" : "オフ"}
+          </button>
+        )}
+        {recognition.supported && (
+          <button
+            onClick={toggleTalk}
+            aria-pressed={talkMode}
+            title="返事を聞き終えたら、自動でマイクがオンになります"
+            className={"rounded-full border px-3 py-1 " + (talkMode ? "border-cyan-500 text-cyan-300" : "border-slate-700 text-slate-400")}
+          >
+            会話モード {talkMode ? "オン" : "オフ"}
+          </button>
+        )}
+        {speaker.supported && speakOn && speaker.japaneseVoices.length > 1 && (
+          <select
+            value={speaker.voiceName ?? ""}
+            onChange={(e) => {
+              speaker.setVoiceName(e.target.value);
+              saveSetting("voice", e.target.value);
+            }}
+            className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300"
+            aria-label="声"
+          >
+            {speaker.japaneseVoices.map((v) => (
+              <option key={v.name} value={v.name}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
       <main className="flex-1 space-y-3 overflow-y-auto pb-4">
         {messages.length === 0 && (
@@ -100,7 +243,9 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
                 <span className="ml-0.5 inline-block animate-pulse text-cyan-400">▍</span>
               )}
               {m.role === "user" && m.status === "pending" && (
-                <div className="mt-1 text-xs text-cyan-200">PC の応答待ち（常駐プログラムが動いているか確認）</div>
+                <div className="mt-1 text-xs text-cyan-200">
+                  {online === false ? "PC がオフラインです。PC の常駐プログラムが動くと返事をします" : "PC の応答待ち"}
+                </div>
               )}
               {m.role === "user" && m.status === "processing" && !repliedIds.has(m.id) && (
                 <div className="mt-1 text-xs text-cyan-200">考えています…</div>
@@ -112,14 +257,28 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
         <div ref={bottomRef} />
       </main>
 
-      {error && <p className="pb-2 text-sm text-red-400">{error}</p>}
-      <form onSubmit={send} className="flex gap-2 pb-4">
+      {(error || recognition.error) && <p className="pb-2 text-sm text-red-400">{error || recognition.error}</p>}
+      <form onSubmit={onSubmit} className="flex gap-2 pb-4">
         <input
-          value={input}
+          value={recognition.listening ? recognition.interim : input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={waiting ? "返事を待っています…" : "ジャービスに話しかける"}
-          className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2"
+          readOnly={recognition.listening}
+          placeholder={recognition.listening ? "聞いています…" : waiting ? "返事を待っています…" : "ジャービスに話しかける"}
+          className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2"
         />
+        {recognition.supported && (
+          <button
+            type="button"
+            onClick={onMic}
+            aria-label={recognition.listening ? "聞き取りをやめる" : "マイクで話しかける"}
+            className={
+              "rounded px-3 py-2 font-medium text-white " +
+              (recognition.listening ? "animate-pulse bg-red-600" : "bg-slate-700 hover:bg-slate-600")
+            }
+          >
+            {recognition.listening ? "■" : "🎤"}
+          </button>
+        )}
         <button className="rounded bg-cyan-600 px-4 py-2 font-medium text-white hover:bg-cyan-500">送信</button>
       </form>
     </div>
