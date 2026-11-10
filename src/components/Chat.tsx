@@ -67,7 +67,9 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
     }
   }
 
-  const waiting = messages.some((m) => m.role === "user" && (m.status === "pending" || m.status === "processing"));
+  // 返事を書き始めた発言には「考えています…」を出さない。
+  const repliedIds = new Set(messages.map((m) => m.reply_to).filter((id): id is string => id !== null));
+  const waiting =messages.some((m) => m.role === "user" && (m.status === "pending" || m.status === "processing"));
 
   return (
     <div className="mx-auto flex h-dvh w-full max-w-2xl flex-col px-4">
@@ -94,10 +96,13 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
               }
             >
               {m.content}
+              {m.role === "assistant" && m.status === "processing" && (
+                <span className="ml-0.5 inline-block animate-pulse text-cyan-400">▍</span>
+              )}
               {m.role === "user" && m.status === "pending" && (
                 <div className="mt-1 text-xs text-cyan-200">PC の応答待ち（常駐プログラムが動いているか確認）</div>
               )}
-              {m.role === "user" && m.status === "processing" && (
+              {m.role === "user" && m.status === "processing" && !repliedIds.has(m.id) && (
                 <div className="mt-1 text-xs text-cyan-200">考えています…</div>
               )}
               {m.status === "error" && <div className="mt-1 text-xs text-red-300">エラー: {m.error}</div>}

@@ -1,90 +1,116 @@
 // ジャービスの PC 常駐プログラム。
 // - Supabase の messages テーブルを Realtime で見張り、画面から届いた発言（status = 'pending'）を受け取る。
-// - PC の Claude Code（claude -p、利用者の有料プラン）に返事を作らせ、返事を messages に書き込む。
+// - 起動したままの Claude Code（利用者の有料プラン）に返事を作らせ、書いた端から messages に書き込む。
 // - PC からは外向きの通信だけを使う。ポートを開けないので、ルーターやファイアウォールの設定は不要。
 //
 // 起動: npm run agent（.env.local の SUPABASE_URL / SUPABASE_SECRET_KEY を使う）
 
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import { buildPrompt } from "./lib/prompt.mjs";
+import { ClaudeSession } from "./lib/claude-session.mjs";
+import { PERSONA, buildFirstTurn, formatTurn } from "./lib/prompt.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
-const MODEL = process.env.CLAUDE_MODEL || "sonnet";
-// Claude Code に使わせる道具。最初は Web 検索だけ。PC 操作を足すときはここを広げる。
-const TOOLS = process.env.JARVIS_TOOLS || "WebSearch";
 const TIMEOUT_MS = Number(process.env.JARVIS_TIMEOUT_MS || 3 * 60 * 1000);
+// この回数だけ会話したら Claude Code を起動し直す（会話が長くなりすぎて遅くなるのを防ぐ）。
+const MAX_TURNS = Number(process.env.JARVIS_MAX_TURNS || 40);
 const HISTORY_COUNT = 30;
+// 画面への書き込みの間隔。短いほど滑らかだが、Supabase への書き込み回数が増える。
+const STREAM_INTERVAL_MS = 300;
 // Claude Code の作業フォルダ。PC 上の他のファイルに触れないよう、専用フォルダで動かす。
 const WORKDIR = path.join(ROOT, "agent", "workspace");
+const PERSONA_FILE = "jarvis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
 
 if (!SUPABASE_URL || !SECRET_KEY) {
   console.error("SUPABASE_URL と SUPABASE_SECRET_KEY を .env.local に設定してください（.env.example を参照）。");
   process.exit(1);
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
+fs.writeFileSync(path.join(WORKDIR, PERSONA_FILE), PERSONA);
 
 // secret キーは RLS を通らない強い権限を持つ。PC の .env.local にだけ置き、Vercel やリポジトリには入れない。
 const supabase = createClient(SUPABASE_URL, SECRET_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const claude = new ClaudeSession({
+  bin: process.env.CLAUDE_BIN || "claude",
+  model: process.env.CLAUDE_MODEL || "sonnet",
+  // Claude Code に使わせる道具。最初は Web 検索だけ。PC 操作を足すときはここを広げる。
+  tools: process.env.JARVIS_TOOLS || "WebSearch",
+  cwd: WORKDIR,
+  systemPromptFile: PERSONA_FILE,
+  timeoutMs: TIMEOUT_MS,
+});
+
 function log(msg) {
   console.log(`[${new Date().toLocaleTimeString("ja-JP")}] ${msg}`);
 }
 
-function runClaude(prompt) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-p",
-      "--output-format", "text",
-      "--model", MODEL,
-      "--tools", TOOLS,
-      "--allowedTools", TOOLS,
-      "--no-session-persistence",
-      "--strict-mcp-config",
-    ];
-    const child = spawn(CLAUDE_BIN, args, {
-      cwd: WORKDIR,
-      shell: process.platform === "win32", // Windows では claude.cmd を探すために必要
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"],
+/** 返事を少しずつ書き込む。書き込みは 1 本ずつ順番に行い、間隔をあけてまとめる。 */
+function createReplyWriter(message) {
+  let id = null;
+  let latest = "";
+  let written = "";
+  let timer = null;
+  let started = false;
+  let chain = Promise.resolve();
+
+  function flush(status) {
+    chain = chain.then(async () => {
+      if (!latest || (latest === written && status === "processing")) return;
+      const content = latest;
+      if (!id) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({ user_id: message.user_id, role: "assistant", content, status, reply_to: message.id })
+          .select("id")
+          .single();
+        if (error) throw error;
+        id = data.id;
+      } else {
+        const { error } = await supabase.from("messages").update({ content, status }).eq("id", id);
+        if (error) throw error;
+      }
+      written = content;
     });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error("時間内に返事ができませんでした。"));
-    }, TIMEOUT_MS);
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", (e) => {
+    return chain;
+  }
+
+  return {
+    update(text) {
+      latest = text;
+      // 書き始めはすぐ画面に出す。2 回目以降はまとめて書き込む。
+      if (!started) {
+        started = true;
+        flush("processing").catch((e) => log(`途中経過を書き込めませんでした: ${e.message}`));
+        return;
+      }
+      timer ??= setTimeout(() => {
+        timer = null;
+        flush("processing").catch((e) => log(`途中経過を書き込めませんでした: ${e.message}`));
+      }, STREAM_INTERVAL_MS);
+    },
+    async finish(text) {
       clearTimeout(timer);
-      reject(
-        new Error(
-          e.code === "ENOENT"
-            ? "この PC で Claude Code（claude コマンド）が見つかりません。"
-            : `Claude Code を起動できませんでした（${e.code || e.message}）。`,
-        ),
-      );
-    });
-    child.on("close", (code) => {
+      timer = null;
+      latest = text;
+      await flush("done");
+    },
+    async discard() {
       clearTimeout(timer);
-      if (code === 0) return resolve(stdout.trim());
-      console.error(`  Claude Code がエラーで終了しました（終了コード ${code}）: ${stderr.trim().slice(0, 300)}`);
-      reject(new Error("Claude Code がエラーで終了しました。PC の画面に表示された理由を確認してください。"));
-    });
-    child.stdin.end(prompt);
-  });
+      timer = null;
+      await chain.catch(() => {});
+      if (id) await supabase.from("messages").delete().eq("id", id);
+    },
+  };
 }
 
 async function handle(message) {
@@ -101,33 +127,45 @@ async function handle(message) {
 
   log("発言を受け取りました。返事を作っています…");
   const started = Date.now();
+  const writer = createReplyWriter(claimed);
   try {
-    const { data: history, error } = await supabase
-      .from("messages")
-      .select("role, content")
-      .eq("user_id", claimed.user_id)
-      .eq("status", "done")
-      .lt("created_at", claimed.created_at)
-      .order("created_at", { ascending: false })
-      .limit(HISTORY_COUNT);
-    if (error) throw error;
+    if (claude.alive && claude.turns >= MAX_TURNS) {
+      log("会話が長くなったので、Claude Code を起動し直します。");
+      claude.stop();
+    }
 
-    const reply = await runClaude(buildPrompt(history.reverse(), claimed.content));
+    let prompt;
+    if (claude.alive && claude.turns > 0) {
+      prompt = formatTurn(claimed.content);
+    } else {
+      // 起動直後の最初の発言には、これまでの会話を添えて話の流れを引き継ぐ。
+      const { data: history, error } = await supabase
+        .from("messages")
+        .select("role, content")
+        .eq("user_id", claimed.user_id)
+        .eq("status", "done")
+        .lt("created_at", claimed.created_at)
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_COUNT);
+      if (error) throw error;
+      prompt = buildFirstTurn(history.reverse(), claimed.content);
+    }
+
+    let firstAt = 0;
+    const reply = await claude.ask(prompt, (text) => {
+      firstAt ||= Date.now();
+      writer.update(text);
+    });
     if (!reply) throw new Error("返事が空でした。");
 
-    const { error: insertError } = await supabase.from("messages").insert({
-      user_id: claimed.user_id,
-      role: "assistant",
-      content: reply,
-      status: "done",
-      reply_to: claimed.id,
-    });
-    if (insertError) throw insertError;
+    await writer.finish(reply);
     await supabase.from("messages").update({ status: "done" }).eq("id", claimed.id);
-    log(`返事をしました（${((Date.now() - started) / 1000).toFixed(1)} 秒）`);
+    const sec = (ms) => (ms / 1000).toFixed(1);
+    log(`返事をしました（書き始め ${sec(firstAt - started)} 秒 / 完了 ${sec(Date.now() - started)} 秒）`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log(`失敗しました: ${msg}`);
+    await writer.discard();
     await supabase.from("messages").update({ status: "error", error: msg }).eq("id", claimed.id);
   }
 }
@@ -149,8 +187,19 @@ async function processBacklog() {
   data.forEach(enqueue);
 }
 
-// 前回の途中で止まった発言（processing のまま）は、返事待ちに戻してやり直す。
+// 前回の途中で止まった返事は消し、発言は返事待ちに戻してやり直す。
+await supabase.from("messages").delete().eq("status", "processing").eq("role", "assistant");
 await supabase.from("messages").update({ status: "pending" }).eq("status", "processing").eq("role", "user");
+
+// 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
+claude.start();
+
+function shutdown() {
+  claude.stop();
+  process.exit(0);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 supabase
   .channel("jarvis-agent")

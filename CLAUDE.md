@@ -8,9 +8,13 @@ PC に常駐する個人用 AI エージェント。利用者は本人のみ。
 ## 仕組み（API 費用ゼロ）
 - 画面: Next.js（App Router, TypeScript, Tailwind）。Vercel に公開。GitHub の main = 本番、他のブランチ = プレビュー。
 - データ: Supabase。`messages` テーブルに発言と返事を保存する。定義は `supabase/migrations/`。
-- PC 常駐プログラム: `agent/index.mjs`。Realtime で `status = 'pending'` の発言を受け取り、`claude -p` に返事を作らせて書き込む。
+- PC 常駐プログラム: `agent/index.mjs`。Realtime で `status = 'pending'` の発言を受け取り、Claude Code に返事を作らせて書き込む。
   - pending → processing → done / error の順に status を変える。pending から processing に変えられたときだけ処理する（二重処理の防止）。
-  - 依頼文は `agent/lib/prompt.mjs`。システムプロンプトも含めて標準入力で渡す（Windows のコマンド引数で日本語が崩れるため）。
+  - Claude Code は起動したままにして使い回す（`agent/lib/claude-session.mjs`、stream-json の入出力）。毎回起動すると最初の文字まで約 7.5 秒、使い回すと約 1.5 秒。
+  - 返事は書いた端から assistant の行（status = processing）を更新し、書き終えたら done にする。画面は Realtime で少しずつ表示する。
+  - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` を付けて起動する（付けないと書き終えてから完了まで約 3 秒余計にかかる）。
+  - Claude Code を起動した直後の最初の発言にだけ、Supabase の会話履歴を添える。`JARVIS_MAX_TURNS`（既定 40）回で起動し直す。
+  - 人格は `agent/lib/prompt.mjs` の PERSONA。`--append-system-prompt-file` で渡す（コマンド引数に日本語を直接書くと Windows で崩れるため）。
   - Claude Code に使わせる道具は `JARVIS_TOOLS`（既定 WebSearch）。PC 操作の機能はここを広げて足していく。
 - Claude API は使わない（利用者の希望：費用をかけない）。claude.ai などのブラウザ画面の自動操作もしない（規約違反）。
 
