@@ -1,0 +1,26 @@
+# プルリクエストと main への保存のたびに、lint・テスト・ビルドを確認する。
+# Vercel への公開は Vercel の GitHub 連携が行う（main = 本番、それ以外のブランチ = プレビュー）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          # ビルド確認用のダミー値。本物の値は Vercel 側に設定する。
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_dummy
