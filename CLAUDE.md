@@ -18,6 +18,7 @@ PC に常駐する個人用 AI エージェント。利用者は本人のみ。
   - 二重起動の防止は `agent/lib/single-instance.mjs`（名前付きパイプ / Unix ソケット）。終了コード 3 は「起動し直さなくてよい」の合図。
   - Realtime の Presence（チャンネル `jarvis-presence`）で、画面に PC のオンライン / オフラインを知らせる。
   - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-jarvis.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
+  - 自動更新: `agent/lib/updater.mjs`。PC のフォルダの `.version`（setup-windows.ps1 が書く）と GitHub の main を比べ、2 分以上会話がなければ tar.gz を取って上書きし、終了コード 4 で起動し直す。.version がない開発用フォルダでは動かない。main の番号は git の窓口（info/refs）から調べる（API は回数制限があるため）。**main に push したものは、利用者の PC に 1 時間以内に届く**ので、main には動くものだけを入れる。
   - Claude Code に使わせる道具は `JARVIS_TOOLS`（既定 WebSearch）。PC 操作の機能はここを広げて足していく。
 - 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。
 - スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。

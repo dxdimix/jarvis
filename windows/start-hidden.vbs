@@ -1,6 +1,7 @@
 ' Starts the JARVIS agent without a window (used by the Windows startup shortcut).
 ' If the agent stops unexpectedly, it is started again after 10 seconds.
 ' Exit code 3 from the agent means "do not restart" (already running, or settings are missing).
+' Exit code 4 means "updated itself, restart now".
 Option Explicit
 Dim sh, fso, appDir, logDir, logFile, code
 Set sh = CreateObject("WScript.Shell")
@@ -18,5 +19,5 @@ Do
   End If
   code = sh.Run("cmd /c node agent\index.mjs >> """ & logFile & """ 2>&1", 0, True)
   If code = 3 Then Exit Do
-  WScript.Sleep 10000
+  If code <> 4 Then WScript.Sleep 10000
 Loop

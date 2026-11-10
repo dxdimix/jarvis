@@ -2,10 +2,11 @@
 # PowerShell で次の1行を実行すると、必要なものを確認・インストールして、PC の起動時に自動で動くようにする。
 #   irm https://raw.githubusercontent.com/dxdimix/jarvis/main/setup-windows.ps1 | iex
 # 何度実行しても問題ない（入っているものはそのまま使い、アプリは最新版に更新する。設定ファイル .env.local は引き継ぐ）。
+# 一度セットアップすると、その後は常駐プログラムが GitHub の新しい版を自動で取り込む（agent/lib/updater.mjs）。
 
 $ErrorActionPreference = "Stop"
 $AppDir = Join-Path $HOME "jarvis"
-$ZipUrl = "https://github.com/dxdimix/jarvis/archive/refs/heads/main.zip"
+$Repo = "dxdimix/jarvis"
 
 function Step($msg) { Write-Host ""; Write-Host "== $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "   OK: $msg" -ForegroundColor Green }
@@ -78,19 +79,27 @@ if (Test-Path $StopScript) {
 
 # 4. アプリ本体（最新版をダウンロード。設定ファイル .env.local は引き継ぐ）
 Step "アプリをダウンロードしています"
+# 最新版の番号を調べて、その版をダウンロードする（番号は .version に書き、自動更新で使う）
+# （GitHub の API は回数制限があるため、git が使う窓口から調べる）
+$Refs = Invoke-WebRequest -Uri "https://github.com/$Repo.git/info/refs?service=git-upload-pack" -Headers @{ "User-Agent" = "git/2.45 jarvis-setup" } -UseBasicParsing
+$RefsText = [Text.Encoding]::ASCII.GetString($Refs.RawContentStream.ToArray())
+if ($RefsText -notmatch "([0-9a-f]{40}) refs/heads/main") { Fail "最新版の番号を取得できませんでした。少し待ってから、もう一度この1行を実行してください。" }
+$Sha = $Matches[1]
+$ZipUrl = "https://github.com/$Repo/archive/$Sha.zip"
 $Tmp = Join-Path $env:TEMP ("jarvis-setup-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 $Zip = Join-Path $Tmp "app.zip"
 Invoke-WebRequest -Uri $ZipUrl -OutFile $Zip -UseBasicParsing
 Expand-Archive -Path $Zip -DestinationPath $Tmp
-$Src = Join-Path $Tmp "jarvis-main"
+$Src = Join-Path $Tmp "jarvis-$Sha"
 $EnvFile = Join-Path $AppDir ".env.local"
 $SavedEnv = if (Test-Path $EnvFile) { [IO.File]::ReadAllBytes($EnvFile) } else { $null }
 if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
 Move-Item $Src $AppDir
 if ($SavedEnv) { [IO.File]::WriteAllBytes($EnvFile, $SavedEnv) }
 Remove-Item $Tmp -Recurse -Force
-Ok "保存先: $AppDir"
+Set-Content -Path (Join-Path $AppDir ".version") -Value $Sha -NoNewline -Encoding ascii
+Ok "保存先: $AppDir（版: $($Sha.Substring(0, 7))）"
 
 Step "必要な部品を準備しています（初回は数分かかります）"
 Push-Location $AppDir

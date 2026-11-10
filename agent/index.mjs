@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ClaudeSession } from "./lib/claude-session.mjs";
 import { acquireSingleInstance } from "./lib/single-instance.mjs";
 import { PERSONA, buildFirstTurn, formatTurn } from "./lib/prompt.mjs";
+import { startAutoUpdate } from "./lib/updater.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
@@ -29,8 +30,15 @@ const STREAM_INTERVAL_MS = 300;
 const WORKDIR = path.join(ROOT, "agent", "workspace");
 const PERSONA_FILE = "jarvis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
 
-// 終了コード 3 は「自動で起動し直さなくてよい」の合図（windows/start-hidden.vbs が見る）。
+// 終了コード（windows/start-hidden.vbs と start-windows.bat が見る）
+// 3: 自動で起動し直さなくてよい / 4: 更新したので、すぐに起動し直す
 const EXIT_NO_RESTART = 3;
+const EXIT_RESTART_NOW = 4;
+// 自動更新: 確認の間隔と、更新元の GitHub リポジトリ。JARVIS_AUTO_UPDATE=off で止められる。
+const UPDATE_INTERVAL_MS = Number(process.env.JARVIS_UPDATE_INTERVAL_MS || 60 * 60 * 1000);
+const UPDATE_REPO = process.env.JARVIS_UPDATE_REPO || "dxdimix/jarvis";
+// この時間、会話がなければ更新してよい。
+const IDLE_BEFORE_UPDATE_MS = 2 * 60 * 1000;
 
 if (!SUPABASE_URL || !SECRET_KEY) {
   console.error("SUPABASE_URL と SUPABASE_SECRET_KEY を .env.local に設定してください（.env.example を参照）。");
@@ -180,8 +188,17 @@ async function handle(message) {
 
 // 1 件ずつ順番に処理する。
 let queue = Promise.resolve();
+let inFlight = 0;
+let lastActivity = Date.now();
 function enqueue(message) {
-  queue = queue.then(() => handle(message)).catch((e) => log(`処理中にエラー: ${e.message || e}`));
+  inFlight++;
+  queue = queue
+    .then(() => handle(message))
+    .catch((e) => log(`処理中にエラー: ${e.message || e}`))
+    .finally(() => {
+      inFlight--;
+      lastActivity = Date.now();
+    });
 }
 
 async function processBacklog() {
@@ -208,6 +225,21 @@ function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+if (process.env.JARVIS_AUTO_UPDATE !== "off") {
+  const enabled = startAutoUpdate({
+    root: ROOT,
+    repo: UPDATE_REPO,
+    intervalMs: UPDATE_INTERVAL_MS,
+    isIdle: () => inFlight === 0 && Date.now() - lastActivity > IDLE_BEFORE_UPDATE_MS,
+    log,
+    onUpdated: () => {
+      claude.stop();
+      process.exit(EXIT_RESTART_NOW);
+    },
+  });
+  if (enabled) log(`自動更新: オン（${Math.round(UPDATE_INTERVAL_MS / 60000)} 分ごとに新しい版を確認します）`);
+}
 
 // 画面に「PC が動いている」ことを知らせる（Realtime の Presence）。中身は起動時刻だけ。
 const presence = supabase.channel("jarvis-presence");
