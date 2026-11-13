@@ -1,0 +1,24 @@
+# 見張りの対象と方針
+
+ジャービスが状況を把握するアプリの一覧と、それぞれで「何を見てよいか」の決まり。
+利用者に確認して決めたことだけを書く。分からないことは「未確認」と書き、推測で埋めない。
+
+最終更新: 2026-11-13（棚卸しはコードを読んだだけ。本番の状態はまだ見ていない）
+
+## 共通の方針
+- 普段の見張りは、ふつうのプログラムで行う（Claude の利用枠を使わない）。Claude Code は、異常を調べるときと、利用者に聞かれたときだけ使う。
+- エラーが出たときは、原因を調べて修正案を別ブランチ（プルリクエスト）に用意するところまで。本番への反映は利用者の承認後。
+- アプリはすべてデスクトップ PC の `C:\Users\sike1\dev\<アプリ名>` にある。一覧はこのフォルダの直下から作る。
+
+## アプリごとの決まり
+
+| アプリ | 動く場所 | 見てよい範囲 | 備考 |
+| --- | --- | --- | --- |
+| fx-signal-monitor | Vercel ＋ Supabase。定期実行は cron-job.org（毎時 / 15 分ごと） | **すべて**（利用者の指示: 状況をよく聞くので、フルアクセス可） | GMO で本物の注文を出す。注文・取引の操作をしてよいかは確認中 |
+| kabu-signal-monitor | Vercel ＋ Supabase ＋ GitHub Actions（5 分ごと、場中 15 分ごと） | **すべて**（同上） | Windows のタスクスケジューラ「KabuSignalDaily」はもう使っていない（説明書きに残っているだけ） |
+| umsheet-web | Vercel（umsheet.dxdimix.com）＋ Supabase | 外からの確認、データ点検の結果 | **UMSheet の本命**。会員の個人データがあるので、データの中身は読まない |
+| sedori-system | Vercel（umsheet.vercel.app） | 外からの確認 | UMSheet の古い版（本命は umsheet-web） |
+| medical-equipment-manager | Cloudflare ＋ Supabase | **外からの確認だけ**（GitHub Actions の結果、公開 URL が開けるか） | 病院の業務データ。データベースの中は読まない |
+| keiba-optimizer | Vercel ＋ Supabase（共通プロジェクト「General」） | 外からの確認、実行とエラーの履歴 | General は無料枠の通信量を超えたことがある。頻繁に読まない |
+| nencho-helper | 利用者の PC（使うときだけ起動） | ほぼなし | わざと記録を残さない作り |
+| jarvis | Vercel ＋ デスクトップ PC | すべて | — |
