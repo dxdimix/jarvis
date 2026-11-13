@@ -18,6 +18,17 @@ export function safeEnv(env) {
   );
 }
 
+/**
+ * Windows では Claude Code を cmd.exe 経由で起動する（claude.cmd を探すため）。
+ * そのとき引数は 1 本の文字列につながれるので、空白や記号（( ) * , など）を含む引数は引用符で囲む。
+ * 囲まないと、許可のルールなどが途中で切れたり、別の意味に取られたりする。
+ */
+export function quoteForCmd(arg) {
+  if (arg === "") return '""';
+  if (!/[\s"&|<>^()%!*,;=]/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
 export class ClaudeSession {
   /**
    * @param {{ bin: string, model: string, tools: string, allowedTools: string, disallowedTools: string, addDirs: string[],
@@ -53,11 +64,12 @@ export class ClaudeSession {
       "--strict-mcp-config",
       ...(mcpConfigFile ? ["--mcp-config", mcpConfigFile] : []),
     ];
-    const child = spawn(bin, args, {
+    const win = process.platform === "win32";
+    const child = spawn(win ? quoteForCmd(bin) : bin, win ? args.map(quoteForCmd) : args, {
       cwd,
       // 返事に関係のない通信（返事を書き終えた後に 3 秒ほどかかっていた）を止めて、完了を早める。
       env: { ...safeEnv(process.env), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
-      shell: process.platform === "win32", // Windows では claude.cmd を探すために必要
+      shell: win, // Windows では claude.cmd を探すために必要（引数は上で引用符で囲んである）
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -91,7 +103,9 @@ export class ClaudeSession {
       this.child = null;
       if (this.pending) {
         console.error(`  Claude Code が終了しました（終了コード ${code}）: ${stderr.trim().slice(0, 300)}`);
-        this.#fail("Claude Code がエラーで終了しました。PC の画面に表示された理由を確認してください。");
+        // 理由の手がかりを画面にも出す（Claude Code のエラー表示の最後の部分。キーは含まれない）。
+        const reason = stderr.trim().split("\n").slice(-3).join(" ").slice(-300);
+        this.#fail(`Claude Code がエラーで終了しました（終了コード ${code}）${reason ? `: ${reason}` : "。"}`);
       }
     });
   }

@@ -66,3 +66,15 @@ describe("aliasLegacyEnv", () => {
     expect(listApps(env)).toEqual({});
   });
 });
+
+describe("quoteForCmd（Windows で Claude Code に渡す引数）", () => {
+  it("空白や記号を含む引数を引用符で囲む", async () => {
+    const { quoteForCmd } = await import("../agent/lib/claude-session.mjs");
+    expect(quoteForCmd("--model")).toBe("--model");
+    expect(quoteForCmd("WebSearch,Read")).toBe('"WebSearch,Read"');
+    expect(quoteForCmd("Read(**/.env*)")).toBe('"Read(**/.env*)"');
+    expect(quoteForCmd("C:\\Program Files\\x")).toBe('"C:\\Program Files\\x"');
+    expect(quoteForCmd('say "hi"')).toBe('"say ""hi"""');
+    expect(quoteForCmd("")).toBe('""');
+  });
+});
