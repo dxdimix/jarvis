@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { describeLoginError, projectRefFromUrl } from "@/lib/auth-error";
 
 // 利用者は本人のみ。アカウントは Supabase の管理画面で作る（画面からの新規登録はしない）。
 export function LoginForm({ supabase }: { supabase: SupabaseClient }) {
@@ -14,8 +15,12 @@ export function LoginForm({ supabase }: { supabase: SupabaseClient }) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError("ログインできませんでした。メールアドレスとパスワードを確認してください。");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setError(describeLoginError(error.message));
+    } catch (e) {
+      setError(describeLoginError(e instanceof Error ? e.message : String(e)));
+    }
     setBusy(false);
   }
 
@@ -47,6 +52,9 @@ export function LoginForm({ supabase }: { supabase: SupabaseClient }) {
         {busy ? "確認中…" : "ログイン"}
       </button>
       {error && <p className="text-sm text-red-400">{error}</p>}
+      <p className="text-center text-xs text-slate-500">
+        接続先の Supabase プロジェクト: {projectRefFromUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}
+      </p>
     </form>
   );
 }
