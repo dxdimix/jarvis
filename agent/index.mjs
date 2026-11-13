@@ -58,7 +58,11 @@ if (!(await acquireSingleInstance("kymis-agent"))) {
   process.exit(EXIT_NO_RESTART);
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
-fs.writeFileSync(path.join(WORKDIR, PERSONA_FILE), PERSONA);
+// 人格に、この PC での手引きの場所を書き足して渡す（PC ごとにフォルダの場所が違うため）。
+fs.writeFileSync(
+  path.join(WORKDIR, PERSONA_FILE),
+  `${PERSONA}\n- キーミスの手引きのフォルダ（この PC での場所）: ${path.join(ROOT, "docs", "apps")}\n`,
+);
 // キーミスの道具（MCP サーバー）の設定。node はこの常駐プログラムと同じものを、場所を指定して使う。
 fs.writeFileSync(
   path.join(WORKDIR, MCP_CONFIG_FILE),
@@ -85,7 +89,8 @@ const claude = new ClaudeSession({
   allowedTools: process.env.KYMIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,mcp__kymis",
   disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Bash,Edit,Write,NotebookEdit",
   mcpConfigFile: MCP_CONFIG_FILE,
-  addDirs: DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [],
+  // 開発用フォルダ（アプリのコード）と、キーミスの手引き（docs）を読めるようにする
+  addDirs: [path.join(ROOT, "docs"), ...(DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [])],
   cwd: WORKDIR,
   systemPromptFile: PERSONA_FILE,
   timeoutMs: TIMEOUT_MS,
@@ -326,6 +331,8 @@ connect(
     else log("Supabase につなぎ直しました。");
     announced = true;
     // 接続が切れてつなぎ直したときも、その間に届いた発言を拾う。
+    // つながった直後は通知が届き始めるまで少しかかるので、3 秒後にも 1 回確かめる。
     processBacklog();
+    setTimeout(processBacklog, 3_000);
   },
 );

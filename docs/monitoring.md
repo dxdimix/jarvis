@@ -27,3 +27,8 @@
 - アプリのデータは `agent/tools/appdata.mjs` で読む。HTTP の GET / HEAD しか送らないので、書き換えはできない。Claude Code には MCP の道具（`agent/tools/mcp-server.mjs`）として渡す。
 - 読めるアプリは PC の `.env.local` に `KYMIS_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
 - キーミスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、キーミスの道具（MCP）だけ。コマンドの実行（Bash）はできない。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
+
+## アプリごとの手引き（docs/apps/）
+- キーミスがデータを読む前に読む手引き。表の意味、利用者本人の行の絞り方、取り違えやすい表を書く。
+- 今あるもの: `fx.md`（FX）。
+- 新しいアプリのデータを読めるようにしたときは、手引きも作る。表の意味はアプリの `supabase/migrations/` のコメントで確かめてから書く。
