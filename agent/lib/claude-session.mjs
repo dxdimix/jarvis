@@ -5,9 +5,23 @@
 
 import { spawn } from "node:child_process";
 
+/**
+ * Claude Code に渡す環境変数から、キーや秘密の値を外す。
+ * アプリのデータを読む道具（agent/tools/appdata.mjs）は、キーを .env.local から自分で読む。
+ */
+export function safeEnv(env) {
+  return Object.fromEntries(
+    // Claude Code 自身のログインに使うもの（ANTHROPIC_ / CLAUDE_ で始まる）は残す。
+    Object.entries(env).filter(
+      ([k]) => /^(ANTHROPIC_|CLAUDE_)/.test(k) || !/KEY|SECRET|TOKEN|PASSWORD|JARVIS_APP_|SUPABASE/i.test(k),
+    ),
+  );
+}
+
 export class ClaudeSession {
   /**
-   * @param {{ bin: string, model: string, tools: string, cwd: string, systemPromptFile: string, timeoutMs: number }} options
+   * @param {{ bin: string, model: string, tools: string, allowedTools: string, disallowedTools: string, addDirs: string[],
+   *   cwd: string, systemPromptFile: string, timeoutMs: number }} options
    */
   constructor(options) {
     this.options = options;
@@ -22,7 +36,7 @@ export class ClaudeSession {
   }
 
   start() {
-    const { bin, model, tools, cwd, systemPromptFile } = this.options;
+    const { bin, model, tools, allowedTools, disallowedTools, addDirs = [], cwd, systemPromptFile } = this.options;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -31,7 +45,9 @@ export class ClaudeSession {
       "--include-partial-messages",
       "--model", model,
       "--tools", tools,
-      "--allowedTools", tools,
+      "--allowedTools", allowedTools,
+      ...(disallowedTools ? ["--disallowedTools", disallowedTools] : []),
+      ...addDirs.flatMap((d) => ["--add-dir", d]),
       "--append-system-prompt-file", systemPromptFile,
       "--no-session-persistence",
       "--strict-mcp-config",
@@ -39,7 +55,7 @@ export class ClaudeSession {
     const child = spawn(bin, args, {
       cwd,
       // 返事に関係のない通信（返事を書き終えた後に 3 秒ほどかかっていた）を止めて、完了を早める。
-      env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
+      env: { ...safeEnv(process.env), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
       shell: process.platform === "win32", // Windows では claude.cmd を探すために必要
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],

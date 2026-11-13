@@ -6,6 +6,7 @@
 // 起動: npm run agent（.env.local の SUPABASE_URL / SUPABASE_SECRET_KEY を使う）
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
@@ -30,6 +31,8 @@ const HISTORY_COUNT = 30;
 const STREAM_INTERVAL_MS = 300;
 // Claude Code の作業フォルダ。PC 上の他のファイルに触れないよう、専用フォルダで動かす。
 const WORKDIR = path.join(ROOT, "agent", "workspace");
+// 利用者のアプリが置いてある開発用フォルダ。ジャービスはここのコードを読める（書き換えはしない）。
+const DEV_DIR = process.env.JARVIS_DEV_DIR || path.join(os.homedir(), "dev");
 const PERSONA_FILE = "jarvis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
 
 // 終了コード（windows/start-hidden.vbs と start-windows.bat が見る）
@@ -61,8 +64,14 @@ const supabase = createClient(SUPABASE_URL, SECRET_KEY, {
 const claude = new ClaudeSession({
   bin: process.env.CLAUDE_BIN || "claude",
   model: process.env.CLAUDE_MODEL || "sonnet",
-  // Claude Code に使わせる道具。最初は Web 検索だけ。PC 操作を足すときはここを広げる。
-  tools: process.env.JARVIS_TOOLS || "WebSearch",
+  // Claude Code に使わせる道具（docs/monitoring.md の決まりに合わせる）
+  // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、アプリのデータを読む道具（読み取り専用）
+  // - Bash は appdata.mjs の実行だけを許可する（ほかは Claude Code が安全と判断する読み取り系のコマンドだけ動く）
+  // - .env などの秘密のファイルは読ませない
+  tools: process.env.JARVIS_TOOLS || "WebSearch,Read,Glob,Grep,Bash",
+  allowedTools: process.env.JARVIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,Bash(node ../tools/appdata.mjs:*)",
+  disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Edit,Write,NotebookEdit",
+  addDirs: DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [],
   cwd: WORKDIR,
   systemPromptFile: PERSONA_FILE,
   timeoutMs: TIMEOUT_MS,
@@ -217,6 +226,12 @@ async function processBacklog() {
 // 前回の途中で止まった返事は消し、発言は返事待ちに戻してやり直す。
 await supabase.from("messages").delete().eq("status", "processing").eq("role", "assistant");
 await supabase.from("messages").update({ status: "pending" }).eq("status", "processing").eq("role", "user");
+
+// Realtime の通知は、起動直後や再接続の前後に取りこぼすことがある。
+// 念のため 30 秒ごとに返事待ちの発言が残っていないか確かめる（同じ発言を二重に処理しないことは handle() が保証する）。
+setInterval(() => {
+  if (inFlight === 0) processBacklog();
+}, 30_000).unref();
 
 // 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
 claude.start();
