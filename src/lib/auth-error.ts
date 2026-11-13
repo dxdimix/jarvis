@@ -33,3 +33,16 @@ export function projectRefFromUrl(url: string | undefined): string {
     return "URL の形が正しくありません";
   }
 }
+
+/**
+ * Supabase の URL を「https://xxxx.supabase.co」の形にそろえる。
+ * 管理画面には「https://xxxx.supabase.co/rest/v1/」の形で表示される場所もあり、そのまま貼ると
+ * ログインが「Invalid path specified in request URL」で失敗するため、後ろの部分を取り除く。
+ */
+export function normalizeSupabaseUrl(url: string): string {
+  try {
+    return new URL(url.trim()).origin;
+  } catch {
+    return url.trim();
+  }
+}

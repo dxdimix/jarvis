@@ -18,8 +18,10 @@ import { startAutoUpdate } from "./lib/updater.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+// URL は「https://xxxx.supabase.co」の形にそろえる（後ろに /rest/v1/ などが付いていても動くように）。
+const RAW_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+const SUPABASE_URL = RAW_URL ? URL.parse(RAW_URL)?.origin ?? RAW_URL : "";
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY?.trim();
 const TIMEOUT_MS = Number(process.env.JARVIS_TIMEOUT_MS || 3 * 60 * 1000);
 // この回数だけ会話したら Claude Code を起動し直す（会話が長くなりすぎて遅くなるのを防ぐ）。
 const MAX_TURNS = Number(process.env.JARVIS_MAX_TURNS || 40);

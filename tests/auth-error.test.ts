@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeLoginError, projectRefFromUrl } from "../src/lib/auth-error";
+import { describeLoginError, normalizeSupabaseUrl, projectRefFromUrl } from "../src/lib/auth-error";
 
 describe("describeLoginError", () => {
   it("よくある失敗の理由を日本語にする", () => {
@@ -20,5 +20,13 @@ describe("projectRefFromUrl", () => {
     expect(projectRefFromUrl("https://abcdefgh.supabase.co")).toBe("abcdefgh");
     expect(projectRefFromUrl(undefined)).toBe("未設定");
     expect(projectRefFromUrl("abc")).toBe("URL の形が正しくありません");
+  });
+});
+
+describe("normalizeSupabaseUrl", () => {
+  it("後ろの /rest/v1/ などを取り除く", () => {
+    expect(normalizeSupabaseUrl("https://abcd.supabase.co/rest/v1/")).toBe("https://abcd.supabase.co");
+    expect(normalizeSupabaseUrl(" https://abcd.supabase.co/ ")).toBe("https://abcd.supabase.co");
+    expect(normalizeSupabaseUrl("https://abcd.supabase.co")).toBe("https://abcd.supabase.co");
   });
 });
