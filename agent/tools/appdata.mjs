@@ -113,15 +113,16 @@ async function openapi(app) {
   return res.json();
 }
 
-async function main(argv) {
+/** コマンドを実行して、結果の文字列を返す（コマンドとして使うときも、MCP の道具として使うときも、これを通す）。 */
+export async function run(argv) {
   const [cmd, appName, table, ...rest] = argv;
-  if (!cmd || cmd === "help" || cmd === "--help") return console.log(HELP);
+  if (!cmd || cmd === "help" || cmd === "--help") return HELP;
 
   const apps = listApps();
   if (cmd === "apps") {
     const names = Object.keys(apps);
-    if (!names.length) return console.log("使えるアプリはありません（.env.local に KYMIS_APP_<名前>_URL / _KEY がない）。");
-    return console.log(names.map((n) => `${n}${apps[n].label ? `（${apps[n].label}）` : ""}`).join("\n"));
+    if (!names.length) return "使えるアプリはありません（.env.local に KYMIS_APP_<名前>_URL / _KEY がない）。";
+    return names.map((n) => `${n}${apps[n].label ? `（${apps[n].label}）` : ""}`).join("\n");
   }
 
   const app = apps[(appName || "").toLowerCase()];
@@ -129,7 +130,7 @@ async function main(argv) {
 
   if (cmd === "tables") {
     const spec = await openapi(app);
-    return console.log(Object.keys(spec.definitions ?? {}).sort().join("\n"));
+    return Object.keys(spec.definitions ?? {}).sort().join("\n");
   }
 
   if (!table || !NAME.test(table)) throw new Error("表の名前を指定してください（英数字と _ だけ）");
@@ -138,17 +139,17 @@ async function main(argv) {
     const spec = await openapi(app);
     const def = spec.definitions?.[table];
     if (!def) throw new Error(`表「${table}」が見つかりません`);
-    return console.log(
+    return (
       Object.entries(def.properties ?? {})
         .map(([c, p]) => `${c}: ${p.format ?? p.type ?? "?"}${p.description ? `  — ${p.description.split("\n")[0]}` : ""}`)
-        .join("\n"),
+        .join("\n")
     );
   }
 
   if (cmd === "read") {
     const res = await request(app, `${table}?${buildQuery(rest)}`);
     const rows = await res.json();
-    return console.log(JSON.stringify(shorten(rows), null, 1));
+    return JSON.stringify(shorten(rows), null, 1);
   }
 
   if (cmd === "count") {
@@ -156,15 +157,17 @@ async function main(argv) {
     q.delete("limit");
     const res = await request(app, `${table}?${q}`, "HEAD", { Prefer: "count=exact" });
     const range = res.headers.get("content-range") ?? "";
-    return console.log(range.split("/")[1] ?? "不明");
+    return range.split("/")[1] ?? "不明";
   }
 
   throw new Error(`知らないコマンドです: ${cmd}（help で使い方）`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv.slice(2)).catch((e) => {
-    console.error(`エラー: ${e.message}`);
-    process.exit(1);
-  });
+  run(process.argv.slice(2))
+    .then((out) => console.log(out))
+    .catch((e) => {
+      console.error(`エラー: ${e.message}`);
+      process.exit(1);
+    });
 }

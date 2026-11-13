@@ -36,6 +36,7 @@ const WORKDIR = path.join(ROOT, "agent", "workspace");
 // 利用者のアプリが置いてある開発用フォルダ。キーミスはここのコードを読める（書き換えはしない）。
 const DEV_DIR = process.env.KYMIS_DEV_DIR || path.join(os.homedir(), "dev");
 const PERSONA_FILE = "kymis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
+const MCP_CONFIG_FILE = "kymis-mcp.json"; // WORKDIR からの相対パス
 
 // 終了コード（windows/start-hidden.vbs と start-windows.bat が見る）
 // 3: 自動で起動し直さなくてよい / 4: 更新したので、すぐに起動し直す
@@ -58,6 +59,15 @@ if (!(await acquireSingleInstance("kymis-agent"))) {
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
 fs.writeFileSync(path.join(WORKDIR, PERSONA_FILE), PERSONA);
+// キーミスの道具（MCP サーバー）の設定。node はこの常駐プログラムと同じものを、場所を指定して使う。
+fs.writeFileSync(
+  path.join(WORKDIR, MCP_CONFIG_FILE),
+  JSON.stringify(
+    { mcpServers: { kymis: { command: process.execPath, args: [path.join(ROOT, "agent", "tools", "mcp-server.mjs")] } } },
+    null,
+    2,
+  ),
+);
 
 // secret キーは RLS を通らない強い権限を持つ。PC の .env.local にだけ置き、Vercel やリポジトリには入れない。
 const supabase = createClient(SUPABASE_URL, SECRET_KEY, {
@@ -68,12 +78,13 @@ const claude = new ClaudeSession({
   bin: process.env.CLAUDE_BIN || "claude",
   model: process.env.CLAUDE_MODEL || "sonnet",
   // Claude Code に使わせる道具（docs/monitoring.md の決まりに合わせる）
-  // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、アプリのデータを読む道具（読み取り専用）
-  // - Bash は appdata.mjs の実行だけを許可する（ほかは Claude Code が安全と判断する読み取り系のコマンドだけ動く）
+  // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、キーミスの道具（MCP、アプリのデータを読み取り専用で読む）
+  // - コマンドを実行する機能（Bash）は渡さない。書き換え（Edit / Write）もさせない
   // - .env などの秘密のファイルは読ませない
-  tools: process.env.KYMIS_TOOLS || "WebSearch,Read,Glob,Grep,Bash",
-  allowedTools: process.env.KYMIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,Bash(node ../tools/appdata.mjs:*)",
-  disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Edit,Write,NotebookEdit",
+  tools: process.env.KYMIS_TOOLS || "WebSearch,Read,Glob,Grep",
+  allowedTools: process.env.KYMIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,mcp__kymis",
+  disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Bash,Edit,Write,NotebookEdit",
+  mcpConfigFile: MCP_CONFIG_FILE,
   addDirs: DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [],
   cwd: WORKDIR,
   systemPromptFile: PERSONA_FILE,

@@ -21,7 +21,7 @@ export function safeEnv(env) {
 export class ClaudeSession {
   /**
    * @param {{ bin: string, model: string, tools: string, allowedTools: string, disallowedTools: string, addDirs: string[],
-   *   cwd: string, systemPromptFile: string, timeoutMs: number }} options
+   *   mcpConfigFile?: string, cwd: string, systemPromptFile: string, timeoutMs: number }} options
    */
   constructor(options) {
     this.options = options;
@@ -36,7 +36,7 @@ export class ClaudeSession {
   }
 
   start() {
-    const { bin, model, tools, allowedTools, disallowedTools, addDirs = [], cwd, systemPromptFile } = this.options;
+    const { bin, model, tools, allowedTools, disallowedTools, addDirs = [], mcpConfigFile, cwd, systemPromptFile } = this.options;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -51,6 +51,7 @@ export class ClaudeSession {
       "--append-system-prompt-file", systemPromptFile,
       "--no-session-persistence",
       "--strict-mcp-config",
+      ...(mcpConfigFile ? ["--mcp-config", mcpConfigFile] : []),
     ];
     const child = spawn(bin, args, {
       cwd,

@@ -8,7 +8,7 @@ PC の中に住む個人用 AI アシスタント。利用者は本人のみ。�
 - 正式名称は「K.Y.M.I.S」、日本語は「キーミス」。画面、自己紹介、ドキュメントではこの名前を使う。由来は `docs/name.md`（家族の名前と姓から作った名前。英単語の略称など別の由来を付けない）。
 - 以前の仮の名前は「ジャービス（J.A.R.V.I.S.）」。商標の心配があるため 2026-11-13 に変えた。新しく書くものに以前の名前を使わない。
 - 古い名前との互換のために残しているもの（移行が終わったら消してよい）: 設定の `JARVIS_〇〇`（`agent/lib/env.mjs` が `KYMIS_〇〇` として読む）、Presence の `jarvis-presence`（画面が両方を見る）、自動更新の `dxdimix/jarvis`（`dxdimix/kymis` の次に試す）、ブラウザ保存の `jarvis.〇〇`、`setup-windows.ps1` / `setup-dev-windows.ps1` の古いフォルダ・ショートカット・印の片付け。
-- 利用者の呼び方は「あなた」。「ボス」とは呼ばない。
+- 利用者は芝田圭佑（しばた けいすけ）さん本人だけ。呼び方は「あなた」（名前や「ボス」では呼ばない）。家族の名前の漢字は教わっていないので、推測して書かない。姓は「芝田」（「柴田」ではない）。
 画面から話しかけると、自宅 PC の Claude Code（`claude -p`、利用者の有料プラン）が返事をする。
 
 ## 仕組み（API 費用ゼロ）
@@ -25,7 +25,7 @@ PC の中に住む個人用 AI アシスタント。利用者は本人のみ。�
   - Realtime の Presence（チャンネル `kymis-presence`）で、画面に PC のオンライン / オフラインを知らせる。
   - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-kymis.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
   - 自動更新: `agent/lib/updater.mjs`。PC のフォルダの `.version`（setup-windows.ps1 が書く）と GitHub の main を比べ、2 分以上会話がなければ tar.gz を取って上書きし、終了コード 4 で起動し直す。.version がない開発用フォルダでは動かない。main の番号は git の窓口（info/refs）から調べる（API は回数制限があるため）。**main に push したものは、利用者の PC に 1 時間以内に届く**ので、main には動くものだけを入れる。
-  - Claude Code に使わせる道具: Web 検索、開発用フォルダ（`--add-dir`）のコードを読む Read / Glob / Grep、`agent/tools/appdata.mjs`（アプリの Supabase を読み取り専用で読む）の実行だけ。Edit / Write はさせない。`.env*` などは Read の禁止で読ませない。Claude Code に渡す環境変数からキーを外す（`safeEnv`）。決まりは `docs/monitoring.md`。
+  - Claude Code に使わせる道具: Web 検索、開発用フォルダ（`--add-dir`）のコードを読む Read / Glob / Grep、キーミスの道具（MCP サーバー `agent/tools/mcp-server.mjs`。中身は `agent/tools/appdata.mjs` で、アプリの Supabase を読み取り専用で読む）だけ。Bash・Edit・Write は渡さない（Windows では Bash の許可のルールが効かなかったため、道具は MCP で渡す）。`.env*` などは Read の禁止で読ませない。Claude Code に渡す環境変数からキーを外す（`safeEnv`）。決まりは `docs/monitoring.md`。
   - Realtime の通知は取りこぼすことがあるので、30 秒ごとに返事待ちの発言を確かめる。
   - Realtime につながらない・切れたときは、10 秒後に通信の土台（ソケット）ごと作り直してつなぎ直す（チャンネルだけ作り直しても、壊れたソケットのままではつながらない）。
 - 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。

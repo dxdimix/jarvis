@@ -24,6 +24,6 @@
 | kymis（K.Y.M.I.S 本体） | Vercel ＋ デスクトップ PC | すべて | — |
 
 ## 読み方の仕組み
-- アプリのデータは `agent/tools/appdata.mjs` で読む。HTTP の GET / HEAD しか送らないので、書き換えはできない。
+- アプリのデータは `agent/tools/appdata.mjs` で読む。HTTP の GET / HEAD しか送らないので、書き換えはできない。Claude Code には MCP の道具（`agent/tools/mcp-server.mjs`）として渡す。
 - 読めるアプリは PC の `.env.local` に `KYMIS_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
-- キーミスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、appdata.mjs の実行だけ。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
+- キーミスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、キーミスの道具（MCP）だけ。コマンドの実行（Bash）はできない。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
