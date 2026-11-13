@@ -13,7 +13,6 @@ $Repos = @(
   "umsheet-web",
   "nencho-helper",
   "medical-equipment-manager",
-  "blm-analysis-app",
   "jarvis",
   "sedori-system",
   "keiba-optimizer"
