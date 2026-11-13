@@ -13,14 +13,15 @@ const HISTORY_LIMIT = 100;
 // 読み上げなどの設定はこのブラウザにだけ保存する（保存できない環境でも動くようにする）。
 function loadSetting(key: string, fallback: string) {
   try {
-    return localStorage.getItem(`jarvis.${key}`) ?? fallback;
+    // 以前の名前（jarvis.〇〇）で保存した設定も引き継ぐ。
+    return localStorage.getItem(`kymis.${key}`) ?? localStorage.getItem(`jarvis.${key}`) ?? fallback;
   } catch {
     return fallback;
   }
 }
 function saveSetting(key: string, value: string) {
   try {
-    localStorage.setItem(`jarvis.${key}`, value);
+    localStorage.setItem(`kymis.${key}`, value);
   } catch {}
 }
 
@@ -168,7 +169,7 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
     <div className="mx-auto flex h-dvh w-full max-w-2xl flex-col px-4">
       <header className="flex flex-wrap items-center justify-between gap-2 py-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold tracking-widest text-cyan-400">J.A.R.V.I.S.</h1>
+          <h1 className="text-xl font-semibold tracking-widest text-cyan-400">K.Y.M.I.S</h1>
           <span className="flex items-center gap-1.5 text-xs text-slate-400" data-testid="agent-status">
             <span
               className={
@@ -263,7 +264,7 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
           value={recognition.listening ? recognition.interim : input}
           onChange={(e) => setInput(e.target.value)}
           readOnly={recognition.listening}
-          placeholder={recognition.listening ? "聞いています…" : waiting ? "返事を待っています…" : "ジャービスに話しかける"}
+          placeholder={recognition.listening ? "聞いています…" : waiting ? "返事を待っています…" : "キーミスに話しかける"}
           className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2"
         />
         {recognition.supported && (

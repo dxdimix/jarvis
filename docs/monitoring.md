@@ -1,6 +1,6 @@
 # 見張りの対象と方針
 
-ジャービスが状況を把握するアプリの一覧と、それぞれで「何を見てよいか」の決まり。
+キーミスが状況を把握するアプリの一覧と、それぞれで「何を見てよいか」の決まり。
 利用者に確認して決めたことだけを書く。分からないことは「未確認」と書き、推測で埋めない。
 
 最終更新: 2026-11-13（棚卸しはコードを読んだだけ。本番の状態はまだ見ていない）
@@ -21,9 +21,9 @@
 | medical-equipment-manager | Cloudflare ＋ Supabase | **外からの確認だけ**（GitHub Actions の結果、公開 URL が開けるか） | 病院の業務データ。データベースの中は読まない |
 | keiba-optimizer | Vercel ＋ Supabase（共通プロジェクト「General」。株と共用） | **読むのはすべて**、操作はしない（利用者の指示） | 株のキー（General）で読める。General は無料枠の通信量を超えたことがあるので、聞かれたときだけ読み、定期的には読まない |
 | nencho-helper | 利用者の PC（使うときだけ起動） | ほぼなし | わざと記録を残さない作り |
-| jarvis | Vercel ＋ デスクトップ PC | すべて | — |
+| kymis（K.Y.M.I.S 本体） | Vercel ＋ デスクトップ PC | すべて | — |
 
 ## 読み方の仕組み
 - アプリのデータは `agent/tools/appdata.mjs` で読む。HTTP の GET / HEAD しか送らないので、書き換えはできない。
-- 読めるアプリは PC の `.env.local` に `JARVIS_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
-- ジャービスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、appdata.mjs の実行だけ。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
+- 読めるアプリは PC の `.env.local` に `KYMIS_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
+- キーミスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、appdata.mjs の実行だけ。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。

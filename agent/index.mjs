@@ -1,4 +1,4 @@
-// ジャービスの PC 常駐プログラム。
+// K.Y.M.I.S（キーミス）の PC 常駐プログラム。
 // - Supabase の messages テーブルを Realtime で見張り、画面から届いた発言（status = 'pending'）を受け取る。
 // - 起動したままの Claude Code（利用者の有料プラン）に返事を作らせ、書いた端から messages に書き込む。
 // - PC からは外向きの通信だけを使う。ポートを開けないので、ルーターやファイアウォールの設定は不要。
@@ -15,33 +15,36 @@ import { ClaudeSession } from "./lib/claude-session.mjs";
 import { acquireSingleInstance } from "./lib/single-instance.mjs";
 import { PERSONA, buildFirstTurn, formatTurn } from "./lib/prompt.mjs";
 import { startAutoUpdate } from "./lib/updater.mjs";
+import { aliasLegacyEnv } from "./lib/env.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
+aliasLegacyEnv(); // 以前の名前（JARVIS_〇〇）で書かれた設定も読む
 
 // URL は「https://xxxx.supabase.co」の形にそろえる（後ろに /rest/v1/ などが付いていても動くように）。
 const RAW_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
 const SUPABASE_URL = RAW_URL ? URL.parse(RAW_URL)?.origin ?? RAW_URL : "";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY?.trim();
-const TIMEOUT_MS = Number(process.env.JARVIS_TIMEOUT_MS || 3 * 60 * 1000);
+const TIMEOUT_MS = Number(process.env.KYMIS_TIMEOUT_MS || 3 * 60 * 1000);
 // この回数だけ会話したら Claude Code を起動し直す（会話が長くなりすぎて遅くなるのを防ぐ）。
-const MAX_TURNS = Number(process.env.JARVIS_MAX_TURNS || 40);
+const MAX_TURNS = Number(process.env.KYMIS_MAX_TURNS || 40);
 const HISTORY_COUNT = 30;
 // 画面への書き込みの間隔。短いほど滑らかだが、Supabase への書き込み回数が増える。
 const STREAM_INTERVAL_MS = 300;
 // Claude Code の作業フォルダ。PC 上の他のファイルに触れないよう、専用フォルダで動かす。
 const WORKDIR = path.join(ROOT, "agent", "workspace");
-// 利用者のアプリが置いてある開発用フォルダ。ジャービスはここのコードを読める（書き換えはしない）。
-const DEV_DIR = process.env.JARVIS_DEV_DIR || path.join(os.homedir(), "dev");
-const PERSONA_FILE = "jarvis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
+// 利用者のアプリが置いてある開発用フォルダ。キーミスはここのコードを読める（書き換えはしない）。
+const DEV_DIR = process.env.KYMIS_DEV_DIR || path.join(os.homedir(), "dev");
+const PERSONA_FILE = "kymis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
 
 // 終了コード（windows/start-hidden.vbs と start-windows.bat が見る）
 // 3: 自動で起動し直さなくてよい / 4: 更新したので、すぐに起動し直す
 const EXIT_NO_RESTART = 3;
 const EXIT_RESTART_NOW = 4;
-// 自動更新: 確認の間隔と、更新元の GitHub リポジトリ。JARVIS_AUTO_UPDATE=off で止められる。
-const UPDATE_INTERVAL_MS = Number(process.env.JARVIS_UPDATE_INTERVAL_MS || 60 * 60 * 1000);
-const UPDATE_REPO = process.env.JARVIS_UPDATE_REPO || "dxdimix/jarvis";
+// 自動更新: 確認の間隔と、更新元の GitHub リポジトリ。KYMIS_AUTO_UPDATE=off で止められる。
+const UPDATE_INTERVAL_MS = Number(process.env.KYMIS_UPDATE_INTERVAL_MS || 60 * 60 * 1000);
+// リポジトリの名前を jarvis から kymis に変えた。変える前と後のどちらでも更新できるよう、両方を順に試す。
+const UPDATE_REPOS = (process.env.KYMIS_UPDATE_REPO || "dxdimix/kymis,dxdimix/jarvis").split(",").map((r) => r.trim());
 // この時間、会話がなければ更新してよい。
 const IDLE_BEFORE_UPDATE_MS = 2 * 60 * 1000;
 
@@ -49,8 +52,8 @@ if (!SUPABASE_URL || !SECRET_KEY) {
   console.error("SUPABASE_URL と SUPABASE_SECRET_KEY を .env.local に設定してください（.env.example を参照）。");
   process.exit(EXIT_NO_RESTART);
 }
-if (!(await acquireSingleInstance("jarvis-agent"))) {
-  console.error("ジャービスの常駐プログラムは、すでに別の画面で動いています。");
+if (!(await acquireSingleInstance("kymis-agent"))) {
+  console.error("キーミスの常駐プログラムは、すでに別の画面で動いています。");
   process.exit(EXIT_NO_RESTART);
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
@@ -68,8 +71,8 @@ const claude = new ClaudeSession({
   // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、アプリのデータを読む道具（読み取り専用）
   // - Bash は appdata.mjs の実行だけを許可する（ほかは Claude Code が安全と判断する読み取り系のコマンドだけ動く）
   // - .env などの秘密のファイルは読ませない
-  tools: process.env.JARVIS_TOOLS || "WebSearch,Read,Glob,Grep,Bash",
-  allowedTools: process.env.JARVIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,Bash(node ../tools/appdata.mjs:*)",
+  tools: process.env.KYMIS_TOOLS || "WebSearch,Read,Glob,Grep,Bash",
+  allowedTools: process.env.KYMIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,Bash(node ../tools/appdata.mjs:*)",
   disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Edit,Write,NotebookEdit",
   addDirs: DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [],
   cwd: WORKDIR,
@@ -243,10 +246,10 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-if (process.env.JARVIS_AUTO_UPDATE !== "off") {
+if (process.env.KYMIS_AUTO_UPDATE !== "off") {
   const enabled = startAutoUpdate({
     root: ROOT,
-    repo: UPDATE_REPO,
+    repos: UPDATE_REPOS,
     intervalMs: UPDATE_INTERVAL_MS,
     isIdle: () => inFlight === 0 && Date.now() - lastActivity > IDLE_BEFORE_UPDATE_MS,
     log,
@@ -258,25 +261,60 @@ if (process.env.JARVIS_AUTO_UPDATE !== "off") {
   if (enabled) log(`自動更新: オン（${Math.round(UPDATE_INTERVAL_MS / 60000)} 分ごとに新しい版を確認します）`);
 }
 
-// 画面に「PC が動いている」ことを知らせる（Realtime の Presence）。中身は起動時刻だけ。
-const presence = supabase.channel("jarvis-presence");
-presence.subscribe((status) => {
-  if (status === "SUBSCRIBED") presence.track({ online_at: new Date().toISOString() });
-});
-
-supabase
-  .channel("jarvis-agent")
-  .on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: "messages", filter: "status=eq.pending" },
-    (payload) => enqueue(payload.new),
-  )
-  .subscribe((status, err) => {
+// Realtime のチャンネルにつなぐ。つながらなかったときや切れたときは、10 秒後につなぎ直す。
+// （PC の起動直後など、ネットワークや Supabase の準備が整う前に起動しても、あとでつながるようにする）
+const RETRY_MS = 10_000;
+// 通信の土台（ソケット）が壊れたままだと、チャンネルだけ作り直してもつながらない。
+// つなぎ直すときは土台ごと作り直す（同時に複数のチャンネルが頼んでも、作り直しは 1 回にまとめる）。
+let resetting = null;
+function resetRealtime(then) {
+  resetting ??= (async () => {
+    supabase.realtime.disconnect();
+    await new Promise((r) => setTimeout(r, 500));
+    supabase.realtime.connect();
+  })().finally(() => {
+    resetting = null;
+  });
+  resetting.then(then);
+}
+function connect(name, setup, onSubscribed) {
+  let retrying = false;
+  const channel = setup(supabase.channel(name));
+  channel.subscribe((status, err) => {
     if (status === "SUBSCRIBED") {
-      log("ジャービス、起動しました。画面からの発言を待っています。（終了: Ctrl + C）");
-      // 接続が切れて再接続したときも、その間に届いた発言を拾う。
-      processBacklog();
-    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-      log(`Supabase との接続に問題があります（${status}${err ? `: ${err.message}` : ""}）。自動で再接続します。`);
+      onSubscribed?.(channel);
+    } else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") && !retrying) {
+      retrying = true;
+      log(`Supabase との接続に問題があります（${name}: ${status}${err ? ` ${err.message}` : ""}）。${RETRY_MS / 1000} 秒後につなぎ直します。`);
+      setTimeout(async () => {
+        await supabase.removeChannel(channel).catch(() => {});
+        resetRealtime(() => connect(name, setup, onSubscribed));
+      }, RETRY_MS);
     }
   });
+}
+
+// 画面に「PC が動いている」ことを知らせる（Realtime の Presence）。中身は起動時刻だけ。
+connect(
+  "kymis-presence",
+  (ch) => ch,
+  (ch) => ch.track({ online_at: new Date().toISOString() }),
+);
+
+let announced = false;
+connect(
+  "kymis-agent",
+  (ch) =>
+    ch.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages", filter: "status=eq.pending" },
+      (payload) => enqueue(payload.new),
+    ),
+  () => {
+    if (!announced) log("キーミス、起動しました。画面からの発言を待っています。（終了: Ctrl + C）");
+    else log("Supabase につなぎ直しました。");
+    announced = true;
+    // 接続が切れてつなぎ直したときも、その間に届いた発言を拾う。
+    processBacklog();
+  },
+);

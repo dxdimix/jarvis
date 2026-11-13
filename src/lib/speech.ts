@@ -24,7 +24,7 @@ export function takeSpeakable(text: string, from: number, final: boolean): { chu
   return { chunk: text.slice(from, end).trim(), next: end };
 }
 
-/** 日本語の声の中から、ジャービスらしい男性の声を優先して選ぶ。 */
+/** 日本語の声の中から、キーミスらしい落ち着いた男性の声を優先して選ぶ。 */
 export function pickJapaneseVoice(voices: SpeechSynthesisVoice[], preferredName?: string | null) {
   const ja = voices.filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("ja"));
   if (preferredName) {

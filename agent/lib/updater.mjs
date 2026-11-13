@@ -1,4 +1,4 @@
-// PC のジャービスを、GitHub の main の最新版に自動で更新する。
+// PC のキーミス（K.Y.M.I.S）を、GitHub の main の最新版に自動で更新する。
 // - 今入っている版（コミットの番号）は、アプリのフォルダの .version に書いておく（setup-windows.ps1 が最初に書く）。
 // - 定期的に GitHub の main の番号を確かめ、違っていれば、会話していない時に入れ替える。
 // - .version がないフォルダ（開発用の git の作業フォルダなど）では何もしない。
@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const UA = { "User-Agent": "jarvis-agent" };
+const UA = { "User-Agent": "kymis-agent" };
 
 export function readVersion(root) {
   try {
@@ -30,7 +30,7 @@ export function parseMainSha(refsText) {
  */
 export async function fetchLatestSha(repo) {
   const res = await fetch(`https://github.com/${repo}.git/info/refs?service=git-upload-pack`, {
-    headers: { "User-Agent": "git/2.45 jarvis-agent" },
+    headers: { "User-Agent": "git/2.45 kymis-agent" },
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`GitHub に問い合わせできませんでした（${res.status}）`);
@@ -50,10 +50,11 @@ function readOrNull(file) {
  * .env.local、node_modules、agent/workspace、agent/logs はダウンロードした中に含まれないので、そのまま残る。
  */
 export async function applyUpdate({ root, repo, sha, log }) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-update-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kymis-update-"));
   try {
     const tarFile = path.join(tmp, "app.tar.gz");
-    const res = await fetch(`https://codeload.github.com/${repo}/tar.gz/${sha}`, {
+    // github.com の URL を使う（リポジトリの名前を変えた後も、GitHub が新しい場所へ案内してくれる）。
+    const res = await fetch(`https://github.com/${repo}/archive/${sha}.tar.gz`, {
       headers: UA,
       signal: AbortSignal.timeout(120_000),
     });
@@ -90,14 +91,30 @@ export async function applyUpdate({ root, repo, sha, log }) {
   }
 }
 
+/** 候補のリポジトリを順に試し、最初に main の番号が取れたものを返す。 */
+async function findLatest(repos) {
+  let lastError = null;
+  for (const repo of repos) {
+    try {
+      const sha = await fetchLatestSha(repo);
+      if (sha) return { repo, sha };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  if (lastError) throw lastError;
+  return null;
+}
+
 /**
  * 定期的に更新を確かめる。更新できたら onUpdated を呼ぶ（呼ばれた側で起動し直す）。
- * @param {{ root: string, repo: string, intervalMs: number, isIdle: () => boolean, log: (m: string) => void, onUpdated: (sha: string) => void }} o
+ * @param {{ root: string, repos: string[], intervalMs: number, isIdle: () => boolean, log: (m: string) => void, onUpdated: (sha: string) => void }} o
  */
 export function startAutoUpdate(o) {
   const current = readVersion(o.root);
   if (!current) return false;
   let latest = null;
+  let latestRepo = null;
   let busy = false;
 
   async function tick() {
@@ -105,15 +122,17 @@ export function startAutoUpdate(o) {
     busy = true;
     try {
       if (!latest) {
-        const sha = await fetchLatestSha(o.repo);
-        if (sha && sha !== current) {
-          latest = sha;
+        const found = await findLatest(o.repos);
+        if (found && found.sha !== current) {
+          latest = found.sha;
+          latestRepo = found.repo;
+          const sha = found.sha;
           o.log(`新しい版が見つかりました（${sha.slice(0, 7)}）。会話が途切れたら更新します。`);
         }
       }
       if (latest && o.isIdle()) {
         o.log("更新しています…");
-        await applyUpdate({ root: o.root, repo: o.repo, sha: latest, log: o.log });
+        await applyUpdate({ root: o.root, repo: latestRepo, sha: latest, log: o.log });
         o.log(`更新しました（${current.slice(0, 7)} → ${latest.slice(0, 7)}）。起動し直します。`);
         o.onUpdated(latest);
       }

@@ -23,7 +23,7 @@ describe("buildFirstTurn", () => {
       "C",
       { now },
     );
-    expect(p).toContain("ボス: A\nジャービス: B");
+    expect(p).toContain("利用者: A\nキーミス: B");
     expect(p.endsWith(formatTurn("C", now))).toBe(true);
   });
 
@@ -33,7 +33,7 @@ describe("buildFirstTurn", () => {
       { role: "user" as const, content: "新しい発言" },
     ];
     const p = buildFirstTurn(history, "C", { now, maxChars: 20 });
-    expect(p).toContain("ボス: 新しい発言");
+    expect(p).toContain("利用者: 新しい発言");
     expect(p).not.toContain("古い発言");
   });
 });

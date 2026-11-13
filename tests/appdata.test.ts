@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildQuery, listApps } from "../agent/tools/appdata.mjs";
 import { safeEnv } from "../agent/lib/claude-session.mjs";
+import { aliasLegacyEnv } from "../agent/lib/env.mjs";
 
 describe("listApps", () => {
-  it(".env.local の JARVIS_APP_<名前>_URL / _KEY からアプリの一覧を作る", () => {
+  it(".env.local の KYMIS_APP_<名前>_URL / _KEY からアプリの一覧を作る", () => {
     const apps = listApps({
-      JARVIS_APP_FX_URL: "https://a.supabase.co",
-      JARVIS_APP_FX_KEY: "sb_secret_x",
-      JARVIS_APP_FX_LABEL: "FX",
-      JARVIS_APP_KABU_URL: "https://b.supabase.co", // キーがないものは使えない
+      KYMIS_APP_FX_URL: "https://a.supabase.co",
+      KYMIS_APP_FX_KEY: "sb_secret_x",
+      KYMIS_APP_FX_LABEL: "FX",
+      KYMIS_APP_KABU_URL: "https://b.supabase.co", // キーがないものは使えない
       OTHER: "1",
     });
     expect(Object.keys(apps)).toEqual(["fx"]);
@@ -43,10 +44,25 @@ describe("safeEnv", () => {
       SUPABASE_SECRET_KEY: "s",
       SUPABASE_URL: "u",
       JARVIS_APP_FX_KEY: "k",
+      KYMIS_APP_KABU_KEY: "k",
       GH_TOKEN: "t",
       CLAUDE_MODEL: "sonnet",
       CLAUDE_CODE_OAUTH_TOKEN: "login",
     });
     expect(env).toEqual({ PATH: "/bin", CLAUDE_MODEL: "sonnet", CLAUDE_CODE_OAUTH_TOKEN: "login" });
+  });
+});
+
+describe("aliasLegacyEnv", () => {
+  it("以前の名前（JARVIS_〇〇）の設定を、新しい名前（KYMIS_〇〇）として読めるようにする", () => {
+    const env: Record<string, string | undefined> = {
+      JARVIS_APP_FX_URL: "https://old.supabase.co",
+      JARVIS_MAX_TURNS: "10",
+      KYMIS_MAX_TURNS: "20", // 新しい名前の値があれば、そちらを優先する
+    };
+    aliasLegacyEnv(env);
+    expect(env.KYMIS_APP_FX_URL).toBe("https://old.supabase.co");
+    expect(env.KYMIS_MAX_TURNS).toBe("20");
+    expect(listApps(env)).toEqual({});
   });
 });

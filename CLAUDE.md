@@ -1,8 +1,14 @@
 @AGENTS.md
 
-# J.A.R.V.I.S.
+# K.Y.M.I.S（キーミス）
 
-PC に常駐する個人用 AI エージェント。利用者は本人のみ。
+PC の中に住む個人用 AI アシスタント。利用者は本人のみ。秘書として受け答えをし、利用者のアプリ全体の状況を取りまとめる（OS のような立ち位置）。
+
+## 名前（必ず守る）
+- 正式名称は「K.Y.M.I.S」、日本語は「キーミス」。画面、自己紹介、ドキュメントではこの名前を使う。由来は `docs/name.md`（家族の名前と姓から作った名前。英単語の略称など別の由来を付けない）。
+- 以前の仮の名前は「ジャービス（J.A.R.V.I.S.）」。商標の心配があるため 2026-11-13 に変えた。新しく書くものに以前の名前を使わない。
+- 古い名前との互換のために残しているもの（移行が終わったら消してよい）: 設定の `JARVIS_〇〇`（`agent/lib/env.mjs` が `KYMIS_〇〇` として読む）、Presence の `jarvis-presence`（画面が両方を見る）、自動更新の `dxdimix/jarvis`（`dxdimix/kymis` の次に試す）、ブラウザ保存の `jarvis.〇〇`、`setup-windows.ps1` / `setup-dev-windows.ps1` の古いフォルダ・ショートカット・印の片付け。
+- 利用者の呼び方は「あなた」。「ボス」とは呼ばない。
 画面から話しかけると、自宅 PC の Claude Code（`claude -p`、利用者の有料プラン）が返事をする。
 
 ## 仕組み（API 費用ゼロ）
@@ -13,24 +19,25 @@ PC に常駐する個人用 AI エージェント。利用者は本人のみ。
   - Claude Code は起動したままにして使い回す（`agent/lib/claude-session.mjs`、stream-json の入出力）。毎回起動すると最初の文字まで約 7.5 秒、使い回すと約 1.5 秒。
   - 返事は書いた端から assistant の行（status = processing）を更新し、書き終えたら done にする。画面は Realtime で少しずつ表示する。
   - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` を付けて起動する（付けないと書き終えてから完了まで約 3 秒余計にかかる）。
-  - Claude Code を起動した直後の最初の発言にだけ、Supabase の会話履歴を添える。`JARVIS_MAX_TURNS`（既定 40）回で起動し直す。
+  - Claude Code を起動した直後の最初の発言にだけ、Supabase の会話履歴を添える。`KYMIS_MAX_TURNS`（既定 40）回で起動し直す。
   - 人格は `agent/lib/prompt.mjs` の PERSONA。`--append-system-prompt-file` で渡す（コマンド引数に日本語を直接書くと Windows で崩れるため）。
   - 二重起動の防止は `agent/lib/single-instance.mjs`（名前付きパイプ / Unix ソケット）。終了コード 3 は「起動し直さなくてよい」の合図。
-  - Realtime の Presence（チャンネル `jarvis-presence`）で、画面に PC のオンライン / オフラインを知らせる。
-  - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-jarvis.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
+  - Realtime の Presence（チャンネル `kymis-presence`）で、画面に PC のオンライン / オフラインを知らせる。
+  - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-kymis.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
   - 自動更新: `agent/lib/updater.mjs`。PC のフォルダの `.version`（setup-windows.ps1 が書く）と GitHub の main を比べ、2 分以上会話がなければ tar.gz を取って上書きし、終了コード 4 で起動し直す。.version がない開発用フォルダでは動かない。main の番号は git の窓口（info/refs）から調べる（API は回数制限があるため）。**main に push したものは、利用者の PC に 1 時間以内に届く**ので、main には動くものだけを入れる。
   - Claude Code に使わせる道具: Web 検索、開発用フォルダ（`--add-dir`）のコードを読む Read / Glob / Grep、`agent/tools/appdata.mjs`（アプリの Supabase を読み取り専用で読む）の実行だけ。Edit / Write はさせない。`.env*` などは Read の禁止で読ませない。Claude Code に渡す環境変数からキーを外す（`safeEnv`）。決まりは `docs/monitoring.md`。
   - Realtime の通知は取りこぼすことがあるので、30 秒ごとに返事待ちの発言を確かめる。
+  - Realtime につながらない・切れたときは、10 秒後に通信の土台（ソケット）ごと作り直してつなぎ直す（チャンネルだけ作り直しても、壊れたソケットのままではつながらない）。
 - 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。
 - スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。
 - Claude API は使わない（利用者の希望：費用をかけない）。claude.ai などのブラウザ画面の自動操作もしない（規約違反）。
 
 ## 開発用フォルダ（利用者の決まり）
 - 利用者のアプリ・システムは、デスクトップ PC の `C:\Users\sike1\dev\<アプリ名>` にすべて置く。新しく作るときも必ずここ。このフォルダは Remote Control に登録してあり、ノート・iPhone からも作業できる。
-- ジャービスはこの dev フォルダの直下を見て、アプリの一覧と状況を把握する（固定の一覧に頼らない）。各アプリの CLAUDE.md に「何をするか・どこで動くか・記録の場所」を書いてもらう。
+- キーミスはこの dev フォルダの直下を見て、アプリの一覧と状況を把握する（固定の一覧に頼らない）。各アプリの CLAUDE.md に「何をするか・どこで動くか・記録の場所」を書いてもらう。
 - 見張りの対象と「何を見てよいか」の決まりは `docs/monitoring.md`（利用者に確認したことだけを書く）。
 - 決まりの文章は `windows/dev-CLAUDE.md`。`setup-dev-windows.ps1` が `dev\CLAUDE.md` に置き、`~\.claude\CLAUDE.md` に短い決まりを足す（印で囲んだ部分だけを入れ替える）。
-- `C:\Users\sike1\jarvis` は自動更新される本体。ジャービスの開発は `dev\jarvis` で行う。
+- `C:\Users\sike1\kymis` は自動更新される本体。キーミスの開発は `dev\kymis` で行う。
 
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。

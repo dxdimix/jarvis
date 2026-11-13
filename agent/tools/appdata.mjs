@@ -1,17 +1,19 @@
 #!/usr/bin/env node
-// ジャービスが、利用者のアプリ（FX・株など）の Supabase のデータを読むための道具。
+// キーミス（K.Y.M.I.S）が、利用者のアプリ（FX・株など）の Supabase のデータを読むための道具。
 // - 読み取り（HTTP の GET / HEAD）しか送らない。書き換え・削除・注文などは、この道具ではできない。
-// - キーは PC のジャービスの .env.local から自分で読む。画面にも Claude にもキーは出さない。
-// - 使えるアプリは .env.local に書いたものだけ（JARVIS_APP_<名前>_URL と JARVIS_APP_<名前>_KEY）。
+// - キーは PC のキーミスの .env.local から自分で読む。画面にも Claude にもキーは出さない。
+// - 使えるアプリは .env.local に書いたものだけ（KYMIS_APP_<名前>_URL と KYMIS_APP_<名前>_KEY。以前の JARVIS_APP_ で始まる名前も読める）。
 //
 // 使い方: node ../tools/appdata.mjs help
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
+import { aliasLegacyEnv } from "../lib/env.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
+aliasLegacyEnv(); // 以前の名前（JARVIS_〇〇）で書かれた設定も読む
 
 const MAX_ROWS = 200;
 const MAX_TEXT = 300;
@@ -39,7 +41,7 @@ export function listApps(env = process.env) {
   /** @type {Record<string, { url?: string, key?: string, label?: string }>} */
   const apps = {};
   for (const [k, v] of Object.entries(env)) {
-    const m = k.match(/^JARVIS_APP_([A-Z0-9_]+?)_(URL|KEY|LABEL)$/);
+    const m = k.match(/^KYMIS_APP_([A-Z0-9_]+?)_(URL|KEY|LABEL)$/);
     if (!m || !v) continue;
     const name = m[1].toLowerCase();
     apps[name] ??= {};
@@ -118,7 +120,7 @@ async function main(argv) {
   const apps = listApps();
   if (cmd === "apps") {
     const names = Object.keys(apps);
-    if (!names.length) return console.log("使えるアプリはありません（.env.local に JARVIS_APP_<名前>_URL / _KEY がない）。");
+    if (!names.length) return console.log("使えるアプリはありません（.env.local に KYMIS_APP_<名前>_URL / _KEY がない）。");
     return console.log(names.map((n) => `${n}${apps[n].label ? `（${apps[n].label}）` : ""}`).join("\n"));
   }
 

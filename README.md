@@ -1,6 +1,8 @@
-# J.A.R.V.I.S.
+# K.Y.M.I.S（キーミス）
 
-PC に常駐する個人用 AI エージェントです。
+PC の中に住む、個人用の AI アシスタントです。秘書として受け答えをし、自作のアプリやシステムの状況を取りまとめます。
+名前は、家族 4 人の名前と姓「芝田」の頭文字から作ったオリジナルの名前です（由来は [docs/name.md](docs/name.md)）。
+
 ブラウザやスマホの画面から話しかけると、自宅 PC の Claude Code が返事をします。
 返事を作るのは PC の Claude Code（Claude の有料プランの範囲）なので、API の料金はかかりません。
 
@@ -21,7 +23,7 @@ PC に常駐する個人用 AI エージェントです。
 ## 最初の1回だけの準備
 
 ### 1. GitHub
-1. https://github.com/new で `jarvis` という名前のリポジトリを作ります。README などは追加せず、空のまま作ります。
+1. https://github.com/new で `kymis` という名前のリポジトリを作ります。README などは追加せず、空のまま作ります。
 2. このフォルダの中身を push します。
 
 ### 2. Supabase
@@ -45,7 +47,7 @@ PC に常駐する個人用 AI エージェントです。
 6. 「Project Settings」→「Data API」で Project URL（`https://xxxx.supabase.co`）を控えます。
 
 ### 3. Vercel
-1. https://vercel.com/new で GitHub の `jarvis` リポジトリを選んで「Import」します。
+1. https://vercel.com/new で GitHub の `kymis` リポジトリを選んで「Import」します。
 2. 「Environment Variables」に次の 2 つを入れて「Deploy」を押します。
    - `NEXT_PUBLIC_SUPABASE_URL` = Project URL
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = Publishable key
@@ -55,25 +57,25 @@ PC に常駐する個人用 AI エージェントです。
 スタートメニューで「PowerShell」と入力して開き、次の1行を貼り付けて Enter を押します。
 
 ```
-irm https://raw.githubusercontent.com/dxdimix/jarvis/main/setup-windows.ps1 | iex
+irm https://raw.githubusercontent.com/dxdimix/kymis/main/setup-windows.ps1 | iex
 ```
 
 次のことを自動で行います。
 
 1. Node.js と Claude Code を確認し、入っていなければインストールする
-2. ジャービスをホームフォルダの `jarvis` にダウンロードする
+2. キーミスをホームフォルダの `kymis` にダウンロードする
 3. 設定ファイル `.env.local` をメモ帳で開く（Supabase の値を 4 か所に貼り付けて保存し、メモ帳を閉じる）
 4. Claude Code にログインしているか確認する
 5. PC の起動時に、画面なしで自動で動くように登録する（スタートアップ）
-6. デスクトップに「ジャービスを起動」「ジャービスを停止」を作り、ジャービスを起動する
+6. デスクトップに「キーミスを起動」「キーミスを停止」を作り、キーミスを起動する
 
 ブラウザの画面の右上に「PC: オンライン」と出れば準備完了です。
 一度セットアップすると、その後は**自動で最新版に更新されます**。常駐プログラムが 1 時間ごとに GitHub の main を確かめ、新しい版があれば、2 分以上会話していないときに入れ替えて起動し直します。設定ファイルはそのまま残ります。
 手動で更新したいときや、うまく動かなくなったときは、同じ1行をもう一度実行します。
 
-- 動きの記録は `jarvis\agent\logs\agent.log` に残ります。
+- 動きの記録は `kymis\agent\logs\agent.log` に残ります。
 - 途中で止まった場合は、10 秒後に自動で起動し直します。
-- 動いている様子を黒い画面で見たいときは、「ジャービスを停止」の後に `start-windows.bat` をダブルクリックします。
+- 動いている様子を黒い画面で見たいときは、「キーミスを停止」の後に `start-windows.bat` をダブルクリックします。
 - Mac / Linux は、`npm install` の後に `npm run agent` で起動します。
 
 ## 使い方
@@ -105,8 +107,8 @@ PC 常駐プログラムの設定（`.env.local`、省略可）:
 | --- | --- | --- |
 | `CLAUDE_MODEL` | `sonnet` | Claude Code のモデル |
 | `CLAUDE_BIN` | `claude` | Claude Code のコマンドの場所 |
-| `JARVIS_TOOLS` | `WebSearch` | Claude Code に使わせる道具（カンマ区切り） |
-| `JARVIS_TIMEOUT_MS` | `180000` | 1 回の返事の制限時間（ミリ秒） |
-| `JARVIS_MAX_TURNS` | `40` | この回数だけ会話したら Claude Code を起動し直す |
-| `JARVIS_AUTO_UPDATE` | `on` | `off` で自動更新を止める |
-| `JARVIS_UPDATE_INTERVAL_MS` | `3600000` | 自動更新で新しい版を確かめる間隔（ミリ秒） |
+| `KYMIS_TOOLS` | `WebSearch` | Claude Code に使わせる道具（カンマ区切り） |
+| `KYMIS_TIMEOUT_MS` | `180000` | 1 回の返事の制限時間（ミリ秒） |
+| `KYMIS_MAX_TURNS` | `40` | この回数だけ会話したら Claude Code を起動し直す |
+| `KYMIS_AUTO_UPDATE` | `on` | `off` で自動更新を止める |
+| `KYMIS_UPDATE_INTERVAL_MS` | `3600000` | 自動更新で新しい版を確かめる間隔（ミリ秒） |
