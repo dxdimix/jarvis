@@ -30,15 +30,20 @@ const HELP = `アプリのデータを読む道具（読み取り専用）
   --where 列=演算子.値     絞り込み。複数指定できる。例: --where status=eq.error --where created_at=gte.2026-11-13
                            演算子: eq neq gt gte lt lte like ilike is in`;
 
-/** .env.local に書かれたアプリの一覧 */
+/**
+ * .env.local に書かれたアプリの一覧
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Record<string, { url?: string, key?: string, label?: string }>}
+ */
 export function listApps(env = process.env) {
+  /** @type {Record<string, { url?: string, key?: string, label?: string }>} */
   const apps = {};
   for (const [k, v] of Object.entries(env)) {
     const m = k.match(/^JARVIS_APP_([A-Z0-9_]+?)_(URL|KEY|LABEL)$/);
     if (!m || !v) continue;
     const name = m[1].toLowerCase();
     apps[name] ??= {};
-    apps[name][m[2].toLowerCase()] = v.trim();
+    apps[name][/** @type {"url" | "key" | "label"} */ (m[2].toLowerCase())] = v.trim();
   }
   for (const [name, a] of Object.entries(apps)) if (!a.url || !a.key) delete apps[name];
   return apps;
