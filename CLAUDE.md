@@ -24,6 +24,12 @@ PC に常駐する個人用 AI エージェント。利用者は本人のみ。
 - スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。
 - Claude API は使わない（利用者の希望：費用をかけない）。claude.ai などのブラウザ画面の自動操作もしない（規約違反）。
 
+## 開発用フォルダ（利用者の決まり）
+- 利用者のアプリ・システムは、デスクトップ PC の `C:\Users\sike1\dev\<アプリ名>` にすべて置く。新しく作るときも必ずここ。このフォルダは Remote Control に登録してあり、ノート・iPhone からも作業できる。
+- ジャービスはこの dev フォルダの直下を見て、アプリの一覧と状況を把握する（固定の一覧に頼らない）。各アプリの CLAUDE.md に「何をするか・どこで動くか・記録の場所」を書いてもらう。
+- 決まりの文章は `windows/dev-CLAUDE.md`。`setup-dev-windows.ps1` が `dev\CLAUDE.md` に置き、`~\.claude\CLAUDE.md` に短い決まりを足す（印で囲んだ部分だけを入れ替える）。
+- `C:\Users\sike1\jarvis` は自動更新される本体。ジャービスの開発は `dev\jarvis` で行う。
+
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。
 - 画面から使うのは publishable キーだけ。データの保護は RLS で行う。テーブルを足したら必ず RLS とポリシーを書く。

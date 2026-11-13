@@ -74,7 +74,42 @@ foreach ($r in $Repos) {
 }
 $ErrorActionPreference = "Stop"
 
-# 4. 結果
+# 4. すべてのセッションが読む決まり（CLAUDE.md）を置く
+Step "開発の決まりを置いています"
+# 4-1. dev の中で作業するセッションが読む決まり（全文）。元は jarvis リポジトリの windows/dev-CLAUDE.md
+$RulesUrl = "https://raw.githubusercontent.com/$Owner/jarvis/main/windows/dev-CLAUDE.md"
+try {
+  Invoke-WebRequest -Uri $RulesUrl -OutFile (Join-Path $DevDir "CLAUDE.md") -UseBasicParsing
+  Ok "$DevDir\CLAUDE.md"
+} catch {
+  Warn "決まりのファイルを取得できませんでした（$($_.Exception.Message)）"
+}
+# 4-2. この PC のすべてのセッションが読む決まり（短い一文）。今の中身は残し、印で囲んだ部分だけを入れ替える
+$UserClaudeDir = Join-Path $HOME ".claude"
+$UserClaude = Join-Path $UserClaudeDir "CLAUDE.md"
+$Begin = "<!-- BEGIN: jarvis dev rule -->"
+$End = "<!-- END: jarvis dev rule -->"
+$Block = @"
+$Begin
+## 開発する場所（ジャービスが管理）
+- アプリ・システムの開発は、必ず ``$DevDir\<アプリ名>`` で行う。新しく作るときもここに作る。
+- 詳しい決まりは ``$DevDir\CLAUDE.md`` を読むこと。
+$End
+"@
+New-Item -ItemType Directory -Path $UserClaudeDir -Force | Out-Null
+$Utf8 = New-Object System.Text.UTF8Encoding($false)
+$Current = if (Test-Path $UserClaude) { [IO.File]::ReadAllText($UserClaude, $Utf8) } else { "" }
+$Pattern = "(?s)" + [regex]::Escape($Begin) + ".*?" + [regex]::Escape($End)
+if ($Current -match $Pattern) {
+  $New = [regex]::Replace($Current, $Pattern, { param($m) $Block.Trim() })
+} else {
+  $Sep = if ($Current.Trim()) { "`r`n`r`n" } else { "" }
+  $New = $Current.TrimEnd() + $Sep + $Block.Trim() + "`r`n"
+}
+[IO.File]::WriteAllText($UserClaude, $New, $Utf8)
+Ok "$UserClaude（ほかの内容はそのまま残しています）"
+
+# 5. 結果
 Step "結果"
 Write-Host "   用意できた: $($Done.Count) 個 / 飛ばした: $($Skipped.Count) 個 / 失敗: $($Failed.Count) 個"
 if ($Failed.Count) { Write-Host "   失敗したもの: $($Failed -join ', ')" -ForegroundColor Red }
