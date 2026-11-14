@@ -17,7 +17,7 @@ export async function loadPcState(supabase: SupabaseClient): Promise<PcState | n
  */
 export async function sendPcCommand(
   supabase: SupabaseClient,
-  kind: "open_url" | "open_session",
+  kind: "open_url" | "open_session" | "restart",
   payload: Record<string, unknown>,
   timeoutMs = 8000,
 ): Promise<{ ok: boolean; result: string; sent: boolean }> {

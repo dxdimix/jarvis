@@ -882,6 +882,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             save(ACCOUNT_KEY, String(n));
           }}
           onRefreshProfiles={refreshPcState}
+          online={online}
+          onRestartPc={async () => {
+            const r = await sendPcCommand(supabase, "restart", {});
+            if (!r.sent && /check constraint|pc_commands_kind_check/.test(r.result))
+              return { ok: false, result: "データベースの更新（20261115100000_pc_commands_restart.sql）がまだです。SQL Editor で実行してください。" };
+            return r;
+          }}
           silenceSec={silenceSec}
           setSilenceSec={(v) => {
             setSilenceSec(v);

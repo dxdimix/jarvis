@@ -5,19 +5,21 @@
 // - 聞き取り: 話し終わりを待つ時間、「ディミ」の呼びかけ、続けて話せる時間、右 Ctrl を 2 回
 // - 表示: 天気の地域、字幕を出しておく時間
 // - アカウント: ディミの外（Chrome）で開くときのアカウント（Chrome のプロフィール）
+// - 再起動: PC のディミを再起動する（新しい版があれば入れ替える）・この画面を読み込み直す
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/weather";
 import type { ChromeProfile } from "@/lib/pc";
 import { DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOLUME } from "@/hooks/useSpeaker";
 import { CloseIcon } from "./Icons";
 
-type Tab = "voice" | "wake" | "display" | "account";
+type Tab = "voice" | "wake" | "display" | "account" | "restart";
 const TABS: { id: Tab; label: string }[] = [
   { id: "voice", label: "音声" },
   { id: "wake", label: "聞き取り" },
   { id: "display", label: "表示" },
   { id: "account", label: "アカウント" },
+  { id: "restart", label: "再起動" },
 ];
 const TAB_KEY = "dimy.settingsTab";
 
@@ -53,6 +55,9 @@ export type SettingsProps = {
   defaultAccount: number;
   setDefaultAccount: (n: number) => void;
   onRefreshProfiles: () => void;
+  // 再起動
+  online: boolean | null;
+  onRestartPc: () => Promise<{ ok: boolean; result: string }>;
   // 表示
   place: Place | null;
   onSavePlace: (name: string) => Promise<string | null>; // 失敗したときは理由を返す
@@ -121,6 +126,7 @@ export function Settings(p: SettingsProps) {
           {tab === "wake" && <WakeTab {...p} />}
           {tab === "display" && <DisplayTab {...p} />}
           {tab === "account" && <AccountTab {...p} />}
+          {tab === "restart" && <RestartTab {...p} />}
         </div>
       </div>
     </div>
@@ -297,6 +303,85 @@ function AccountTab(p: SettingsProps) {
       <button onClick={p.onRefreshProfiles} className="rounded border border-cyan-500/50 px-4 py-1.5 text-cyan-200 hover:bg-cyan-400/10">
         読み直す
       </button>
+    </>
+  );
+}
+
+function RestartTab(p: SettingsProps) {
+  // idle → confirm（もう一度押してもらう）→ sending → waiting（PC が戻るのを待つ）
+  const [step, setStep] = useState<"idle" | "confirm" | "sending" | "waiting">("idle");
+  const [msg, setMsg] = useState("");
+  const sawOffline = useRef(false);
+  const { online } = p;
+
+  // PC のディミが一度オフラインになって戻ってきたら、この画面も読み込み直す（2 分たっても戻らなければ、そのまま読み込み直す）
+  useEffect(() => {
+    if (step !== "waiting") return;
+    if (online === false) sawOffline.current = true;
+    if (online && sawOffline.current) {
+      const t = setTimeout(() => location.reload(), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [online, step]);
+  useEffect(() => {
+    if (step !== "waiting") return;
+    const t = setTimeout(() => location.reload(), 120_000);
+    return () => clearTimeout(t);
+  }, [step]);
+
+  async function restart() {
+    setStep("sending");
+    setMsg("PC のディミに伝えています…");
+    const r = await p.onRestartPc();
+    if (!r.ok) {
+      setStep("idle");
+      setMsg(r.result || "再起動を伝えられませんでした。");
+      return;
+    }
+    sawOffline.current = false;
+    setStep("waiting");
+    setMsg("PC のディミを再起動しています。新しい版があれば入れ替えます。戻ってきたら、この画面も読み込み直します（1〜2 分）。");
+  }
+
+  return (
+    <>
+      <div>
+        <div className="mb-1.5 text-cyan-100">PC のディミを再起動</div>
+        <p className="mb-3 text-xs leading-relaxed text-slate-400">
+          更新を反映させたいときや、ディミの動きがおかしいときに使います。デスクトップの「ディミを再起動」と同じです。話している途中の返事は止まります。
+        </p>
+        {step === "confirm" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-amber-200">本当に再起動しますか？</span>
+            <button onClick={restart} className="rounded border border-rose-400/70 bg-rose-500/15 px-4 py-1.5 text-rose-100 hover:bg-rose-500/30">
+              再起動する
+            </button>
+            <button onClick={() => setStep("idle")} className="rounded border border-slate-600 px-4 py-1.5 text-slate-300 hover:bg-slate-800">
+              やめる
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              setMsg("");
+              setStep("confirm");
+            }}
+            disabled={step !== "idle" || !p.online}
+            className="rounded border border-cyan-500/50 px-4 py-1.5 text-cyan-200 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ディミを再起動
+          </button>
+        )}
+        {!p.online && step === "idle" && <p className="mt-2 text-xs text-slate-400">PC のディミがオフラインなので、ここからは再起動できません。PC のデスクトップの「ディミを再起動」を使ってください。</p>}
+        {msg && <p className="mt-2 text-xs text-cyan-300/90">{msg}</p>}
+      </div>
+      <div>
+        <div className="mb-1.5 text-cyan-100">この画面を読み込み直す</div>
+        <p className="mb-3 text-xs text-slate-400">画面の新しい版を反映させたいときに使います（Ctrl + Shift + R と同じ）。</p>
+        <button onClick={() => location.reload()} className="rounded border border-cyan-500/50 px-4 py-1.5 text-cyan-200 hover:bg-cyan-400/10">
+          読み込み直す
+        </button>
+      </div>
     </>
   );
 }

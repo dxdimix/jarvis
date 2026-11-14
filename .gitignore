@@ -52,3 +52,4 @@ agent/logs/
 
 # 自動更新で使う、PC に入っている版の番号
 .version
+agent/.update-now

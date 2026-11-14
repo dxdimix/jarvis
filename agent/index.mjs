@@ -22,6 +22,8 @@ import { runCommand, startPcStateSync } from "./lib/pc.mjs";
 import { ensureDesktopShortcuts } from "./lib/shortcuts.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// 画面の設定の「再起動」で書く印（次の起動で、すぐ新しい版を確かめる）
+const UPDATE_NOW_FILE = path.join(ROOT, "agent", ".update-now");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
 aliasLegacyEnv(); // 以前の名前（JARVIS_〇〇）で書かれた設定も読む
 
@@ -341,6 +343,17 @@ function startPcCommands(ownerId) {
     } else if (Date.now() - new Date(cmd.created_at).getTime() > 120_000) {
       status = "error";
       result = "時間がたっているので実行しませんでした。";
+    } else if (cmd.kind === "restart") {
+      // 画面の設定の「再起動」: 返事を書いてから終わり、起動し直す（起動したらすぐ新しい版を確かめる）
+      result = "再起動します";
+      await supabase.from("pc_commands").update({ status: "done", result }).eq("id", cmd.id).eq("status", "pending");
+      log("画面から再起動を頼まれました。起動し直します。");
+      try {
+        fs.writeFileSync(UPDATE_NOW_FILE, String(Date.now()));
+      } catch {}
+      claude.stop();
+      setTimeout(() => process.exit(EXIT_RESTART_NOW), 300);
+      return;
     } else {
       try {
         result = await runCommand(cmd, { log });
@@ -384,7 +397,11 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-const UPDATE_NOW = process.env.DIMY_UPDATE_NOW === "1";
+// 「ディミを再起動」（デスクトップのアイコン・画面の設定）から起動したときは、すぐ新しい版を確かめる
+const UPDATE_NOW = process.env.DIMY_UPDATE_NOW === "1" || fs.existsSync(UPDATE_NOW_FILE);
+try {
+  fs.rmSync(UPDATE_NOW_FILE, { force: true });
+} catch {}
 if (process.env.DIMY_AUTO_UPDATE !== "off") {
   const enabled = startAutoUpdate({
     root: ROOT,
