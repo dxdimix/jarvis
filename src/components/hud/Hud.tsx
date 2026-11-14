@@ -41,6 +41,8 @@ import { HudChrome } from "./HudChrome";
 import { WeatherPanel } from "./WeatherPanel";
 import { CalendarPanel } from "./CalendarPanel";
 import { DismissBox } from "./DismissBox";
+import { AdminPanel } from "./AdminPanel";
+import { logActivity } from "@/lib/activity";
 import { DropOverlay, PinBoard, usePinBoard, usePinDrop } from "@/components/pins/PinBoard";
 import { PinAdd } from "@/components/pins/PinAdd";
 import { ScreenPicker } from "@/components/pins/ScreenPicker";
@@ -50,6 +52,7 @@ import {
   ExpandIcon,
   GearIcon,
   MemoryIcon,
+  AdminIcon,
   PaletteIcon,
   PinIcon,
   BookmarkIcon,
@@ -140,7 +143,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const { leader: isLeader, leaderRef } = useActiveDevice(supabase);
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette" | "weather" | "calendar">("none");
+  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette" | "weather" | "calendar" | "admin">("none");
   const panelRef = useRef(panel);
   // Chrome のブックマーク（PC のディミが写したもの）。表がまだないときは空のまま
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -292,12 +295,15 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const handleUtterance = useCallback(
       async (text: string) => {
         setError("");
+        logActivity(supabase, "voice", text);
         // 検索・Chrome で開く・Claude のセッション・ウィンドウを移す、は画面と PC で済ませる（下の localCommandRef）
         if (await localCommandRef.current(text)) return;
         // 「〇〇を開いて」は、ディミに聞かずにこの画面ですぐ開く
         const app = detectOpenCommand(text);
         if (app) {
-          announce(openApp(app.id) ? `${app.name}を開きます` : `ブラウザに止められました。左のアイコンから${app.name}を開いてください`);
+          const ok = openApp(app.id);
+          logActivity(supabase, ok ? "open_app" : "error", ok ? app.name : `${app.name} を開けませんでした（ブラウザに止められた）`);
+          announce(ok ? `${app.name}を開きます` : `ブラウザに止められました。左のアイコンから${app.name}を開いてください`);
           return;
         }
         // アプリの一覧になければ、Chrome のブックマークから探して、別のタブで開く
@@ -448,6 +454,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   /** ディミの外（Chrome）で開く。PC が動いていれば、指定のアカウント（Chrome のプロフィール）で PC が開く */
   async function openOutside(url: string, title: string, account: number | null) {
     const n = account ?? defaultAccount;
+    logActivity(supabase, "open_chrome", `${title} ${url}（アカウント${n}）`);
     if (online) {
       announce(`${title}を開きます`);
       const r = await sendPcCommand(supabase, "open_url", { url, account: n });
@@ -463,6 +470,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
   /** 固定ウィンドウをまとめて移す（声の「モニター4のパレットに移して」など）。移した数を返す */
   function movePins(from: string, to: string) {
+    logActivity(supabase, "move_pins", `${boardLabel(from)} → ${boardLabel(to)}`);
     if (from === "hud") {
       const list = pins.pins.filter((p) => p.kind === "web");
       list.forEach((p) => pins.send(p.id, to));
@@ -521,6 +529,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         const hit = matchSession(pcState?.claude_sessions ?? [], ss.query);
         if (hit) {
           announce(`「${hit.title}」を開きます`);
+          logActivity(supabase, "open_session", hit.title);
           const r = await sendPcCommand(supabase, "open_session", { id: hit.id });
           if (!r.ok) announce(r.result || "PC でセッションを開けませんでした");
           return done();
@@ -557,6 +566,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
   /** 強制停止: 聞き取り・考え中（PC の返事作り）・読み上げ・続けて話せる時間を、すべてやめる */
   function forceStop() {
+    logActivity(supabase, "stop", "強制停止（ボタン・Esc・声）");
     followUpAfterSpeech.current = false;
     cancelSpeech();
     recognition.cancel();
@@ -612,6 +622,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         if (window.matchMedia("(pointer: coarse)").matches) return;
         if (!hotkeyRef.current) return; // 設定でオフにしている
         if (!leaderRef.current) return; // ほかの画面が担当（最後に操作した画面だけが反応する）
+        logActivity(supabase, "hotkey", "右 Ctrl 2 回（話し始め / 話し終わり）");
         onMicRef.current();
       })
       .subscribe();
@@ -626,6 +637,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const closePanel = useCallback(() => setPanel("none"), []);
 
   function changeWake(next: boolean) {
+    logActivity(supabase, "wake", next ? "呼びかけをオン" : "呼びかけをオフ");
     setWakeOn(next);
     save(WAKE_KEY, next ? "on" : "off");
     if (next) announce("「ディミ」と呼んでください");
@@ -727,6 +739,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         </button>
         <button onClick={() => setPanel(panel === "palette" ? "none" : "palette")} data-panel-toggle className={iconBtn} title="パレットをほかのモニターに開く" aria-label="パレットを開く">
           <PaletteIcon className="h-5 w-5" />
+        </button>
+        <button onClick={() => setPanel(panel === "admin" ? "none" : "admin")} className={iconBtn} title="管理（会話・システム・動作の記録）" aria-label="管理">
+          <AdminIcon className="h-5 w-5" />
         </button>
         <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
           <GearIcon className="h-5 w-5" />
@@ -861,6 +876,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         </DismissBox>
       )}
 
+      {/* 管理（記録を大きな画面で見る・コピーする） */}
+      {panel === "admin" && <AdminPanel supabase={supabase} onClose={closePanel} />}
+
       {/* 設定（カテゴリーごとのタブ） */}
       {panel === "settings" && (
         <Settings
@@ -912,6 +930,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           onRefreshProfiles={refreshPcState}
           online={online}
           onRestartPc={async () => {
+            logActivity(supabase, "restart", "設定から PC の DIMY を再起動");
             const r = await sendPcCommand(supabase, "restart", {});
             if (!r.sent && /check constraint|pc_commands_kind_check/.test(r.result))
               return { ok: false, result: "データベースの更新（20261115100000_pc_commands_restart.sql）がまだです。SQL Editor で実行してください。" };

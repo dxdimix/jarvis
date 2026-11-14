@@ -117,8 +117,41 @@ const claude = new ClaudeSession({
 });
 
 function log(msg) {
-  console.log(`[${new Date().toLocaleTimeString("ja-JP")}] ${msg}`);
+  console.log(`[${new Date().toLocaleString("ja-JP", { hour12: false })}] ${msg}`);
+  pushLog("info", msg);
 }
+
+// 記録はデータベース（表 agent_logs）にも残す（画面の「管理」→「システム」で、日時つきで見る・コピーするため）。
+// 3 秒ごとにまとめて書く。表がまだない（データベースの更新前）ときは、一度だけ知らせて書くのをやめる。
+const logBuffer = [];
+let logOwnerId = null;
+let logTableOk = true;
+function pushLog(level, msg) {
+  if (!logTableOk) return;
+  logBuffer.push({ level, message: String(msg).slice(0, 4000), created_at: new Date().toISOString() });
+  if (logBuffer.length > 1000) logBuffer.shift();
+}
+// Claude Code のエラーなど、console.error に出たものも残す
+const consoleError = console.error.bind(console);
+console.error = (...args) => {
+  consoleError(...args);
+  pushLog("error", args.map((a) => (a instanceof Error ? a.message : String(a))).join(" "));
+};
+async function flushLogs() {
+  if (!logTableOk || !logOwnerId || !logBuffer.length) return;
+  const rows = logBuffer.splice(0, 200).map((r) => ({ ...r, user_id: logOwnerId }));
+  const { error } = await supabase.from("agent_logs").insert(rows);
+  if (error) {
+    logTableOk = false;
+    console.log(`記録をデータベースに残せません（${error.message}）。データベースの更新（20261115300000_logs.sql）がまだかもしれません。`);
+  }
+}
+setInterval(() => flushLogs().catch(() => {}), 3_000).unref();
+// 30 日より古い記録は、1 日 1 回消す
+setInterval(() => {
+  if (logTableOk && logOwnerId)
+    supabase.from("agent_logs").delete().lt("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString()).then(() => {});
+}, 86_400_000).unref();
 
 /** 返事を少しずつ書き込む。書き込みは 1 本ずつ順番に行い、間隔をあけてまとめる。 */
 function createReplyWriter(message) {
@@ -319,6 +352,7 @@ try {
   if (data.users.length === 1) {
     const owner = data.users[0];
     process.env.DIMY_OWNER_ID = owner.id;
+    logOwnerId = owner.id;
     // Chrome のブックマークを写す（利用者のメールアドレスでログインしている Chrome のプロフィールから）
     if (owner.email && process.env.DIMY_BOOKMARKS !== "off") startBookmarkSync({ supabase, userId: owner.id, email: owner.email, log });
     // Chrome のプロフィールと Claude Code のセッションの一覧を画面に知らせ、画面からの命令（Chrome で開くなど）を受け付ける

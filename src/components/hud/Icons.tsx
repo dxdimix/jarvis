@@ -244,3 +244,11 @@ export const CaptureIcon = ({ className }: P) => (
     <path d="M8 21h8" />
   </svg>
 );
+
+/** 管理（記録の一覧） */
+export const AdminIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="4" y="3.5" width="16" height="17" rx="1.5" />
+    <path d="M8 8h8M8 12h8M8 16h5" />
+  </svg>
+);
