@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 名前を変えたので、新しい名前のチャンネルと、更新前の PC が使う古い名前のチャンネルの両方を見る。
 // （PC の常駐プログラムが自動更新で新しい版になるまでの間も、オンラインと表示するため）
-const CHANNELS = ["kymis-presence", "jarvis-presence"];
+const CHANNELS = ["dimy-presence", "kymis-presence", "jarvis-presence"];
 
 /** PC の常駐プログラムが動いているか（Realtime の Presence で知らせてくる）。確認中は null。 */
 /**

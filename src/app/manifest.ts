@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 // スマホのホーム画面に追加したとき、アプリのように全画面で開くための設定。
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "K.Y.M.I.S（キーミス）",
-    short_name: "キーミス",
+    name: "DIMY（ディミ）",
+    short_name: "ディミ",
     description: "PC に常駐する個人用 AI エージェント",
     start_url: "/",
     display: "standalone",

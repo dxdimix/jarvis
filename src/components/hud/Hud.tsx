@@ -1,6 +1,6 @@
 "use client";
 
-// キーミスのメイン画面（声が中心）。文字は最小限にし、操作はアイコンだけ。
+// ディミのメイン画面（声が中心）。文字は最小限にし、操作はアイコンだけ。
 // - 中央: 光る球体とリング。周りをデータが流れ続ける
 // - 下中央: マイク。左下: 日時。右下: 天気。左上: PC の状態
 // - 右上のアイコン: 会話（履歴と文字入力のパネル）、覚えていること、読み上げ、設定、全画面
@@ -31,14 +31,15 @@ import {
   WeatherIcon,
 } from "./Icons";
 
-const PLACE_KEY = "kymis.weatherPlace";
-const SPEAK_KEY = "kymis.speak";
-const VOICE_KEY = "kymis.voice";
+const PLACE_KEY = "dimy.weatherPlace";
+const SPEAK_KEY = "dimy.speak";
+const VOICE_KEY = "dimy.voice";
 const CAPTION_MS = 12_000; // 返事の字幕を出しておく時間
 
 function load(key: string) {
   try {
-    return localStorage.getItem(key);
+    // 以前の名前（kymis.〇〇）で保存した設定も引き継ぐ
+    return localStorage.getItem(key) ?? localStorage.getItem(key.replace(/^dimy\./, "kymis."));
   } catch {
     return null;
   }
@@ -242,7 +243,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const pcLabel = online ? "PC オンライン" : online === false ? "PC オフライン" : "PC 確認中";
 
   return (
-    <div className="kymis-grid relative h-dvh w-full overflow-hidden text-cyan-100">
+    <div className="dimy-grid relative h-dvh w-full overflow-hidden text-cyan-100">
       <DataField mode={mode} tone={tone} />
 
       {/* 中央：球体とリング */}

@@ -1,6 +1,6 @@
 # 見張りの対象と方針
 
-キーミスが状況を把握するアプリの一覧と、それぞれで「何を見てよいか」の決まり。
+ディミが状況を把握するアプリの一覧と、それぞれで「何を見てよいか」の決まり。
 利用者に確認して決めたことだけを書く。分からないことは「未確認」と書き、推測で埋めない。
 
 最終更新: 2026-11-13（棚卸しはコードを読んだだけ。本番の状態はまだ見ていない）
@@ -21,14 +21,14 @@
 | medical-equipment-manager | Cloudflare ＋ Supabase | **外からの確認だけ**（GitHub Actions の結果、公開 URL が開けるか） | 病院の業務データ。データベースの中は読まない |
 | keiba-optimizer | Vercel ＋ Supabase（共通プロジェクト「General」。株と共用） | **読むのはすべて**、操作はしない（利用者の指示） | 株のキー（General）で読める。General は無料枠の通信量を超えたことがあるので、聞かれたときだけ読み、定期的には読まない |
 | nencho-helper | 利用者の PC（使うときだけ起動） | ほぼなし | わざと記録を残さない作り |
-| kymis（K.Y.M.I.S 本体） | Vercel ＋ デスクトップ PC | すべて | — |
+| dimy（DIMY 本体） | Vercel ＋ デスクトップ PC | すべて | — |
 
 ## 読み方の仕組み
 - アプリのデータは `agent/tools/appdata.mjs` で読む。HTTP の GET / HEAD しか送らないので、書き換えはできない。Claude Code には MCP の道具（`agent/tools/mcp-server.mjs`）として渡す。
-- 読めるアプリは PC の `.env.local` に `KYMIS_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
-- キーミスの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、キーミスの道具（MCP）だけ。コマンドの実行（Bash）はできない。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
+- 読めるアプリは PC の `.env.local` に `DIMY_APP_<名前>_URL` と `_KEY` を書いたものだけ。medical-equipment-manager などのキーは書かない。
+- ディミの Claude Code に許可しているのは、Web 検索、コードを読む（Read / Glob / Grep、開発用フォルダ）、ディミの道具（MCP）だけ。コマンドの実行（Bash）はできない。.env などの秘密のファイルは読めない設定にしてあり、Claude Code にはキーを環境変数でも渡さない。
 
 ## アプリごとの手引き（docs/apps/）
-- キーミスがデータを読む前に読む手引き。表の意味、利用者本人の行の絞り方、取り違えやすい表を書く。
+- ディミがデータを読む前に読む手引き。表の意味、利用者本人の行の絞り方、取り違えやすい表を書く。
 - 今あるもの: `fx.md`（FX）。
 - 新しいアプリのデータを読めるようにしたときは、手引きも作る。表の意味はアプリの `supabase/migrations/` のコメントで確かめてから書く。

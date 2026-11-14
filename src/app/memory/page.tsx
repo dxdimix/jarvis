@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { LoginForm } from "@/components/LoginForm";
 import { Memory } from "@/components/Memory";
 
-// キーミスが覚えていること（話し方の好み・事実・決まり）を見て、足して、消す画面
+// ディミが覚えていること（話し方の好み・事実・決まり）を見て、足して、消す画面
 export default function MemoryPage() {
   const [supabase] = useState(createClient);
   const [session, setSession] = useState<Session | null | undefined>(undefined);

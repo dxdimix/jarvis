@@ -1,6 +1,6 @@
 "use client";
 
-// 返事ごとの評価（よい / よくない）と、ひとことの感想。キーミスは次の会話からこれを参考にする。
+// 返事ごとの評価（よい / よくない）と、ひとことの感想。ディミは次の会話からこれを参考にする。
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";

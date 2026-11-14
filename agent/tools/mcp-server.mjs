@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// キーミスの道具を、Claude Code に「MCP の道具」として渡すための小さなサーバー。
+// ディミの道具を、Claude Code に「MCP の道具」として渡すための小さなサーバー。
 // - Claude Code が子プロセスとして起動し、標準入出力で JSON-RPC（1 行に 1 つ）をやり取りする。
 // - コマンドを実行する機能（Bash）を Claude Code に渡さずに済むので、OS の違いに左右されず、安全。
 // - 中身は appdata.mjs と同じ（読み取り専用）。キーは appdata.mjs が .env.local から自分で読む。
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { run } from "./appdata.mjs";
 import { addNote, listNotes } from "./memory.mjs";
 
-const SERVER = { name: "kymis", version: "1.0.0" };
+const SERVER = { name: "dimy", version: "1.0.0" };
 
 const appTable = {
   app: { type: "string", description: "アプリの名前（apps で出る名前。例: fx, kabu）" },
@@ -73,7 +73,7 @@ export const TOOLS = [
   },
   {
     name: "memory_list",
-    description: "キーミスが覚えていること（利用者の話し方の好み、利用者についての事実、決まり）の一覧を返す。書き留める前に、同じことがないか確かめるのに使う。",
+    description: "ディミが覚えていること（利用者の話し方の好み、利用者についての事実、決まり）の一覧を返す。書き留める前に、同じことがないか確かめるのに使う。",
     inputSchema: { type: "object", properties: {} },
     call: () => listNotes(),
   },

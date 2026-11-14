@@ -1,4 +1,4 @@
-// K.Y.M.I.S（キーミス）の PC 常駐プログラム。
+// DIMY（ディミ）の PC 常駐プログラム。
 // - Supabase の messages テーブルを Realtime で見張り、画面から届いた発言（status = 'pending'）を受け取る。
 // - 起動したままの Claude Code（利用者の有料プラン）に返事を作らせ、書いた端から messages に書き込む。
 // - PC からは外向きの通信だけを使う。ポートを開けないので、ルーターやファイアウォールの設定は不要。
@@ -25,27 +25,27 @@ aliasLegacyEnv(); // 以前の名前（JARVIS_〇〇）で書かれた設定も�
 const RAW_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
 const SUPABASE_URL = RAW_URL ? URL.parse(RAW_URL)?.origin ?? RAW_URL : "";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY?.trim();
-const TIMEOUT_MS = Number(process.env.KYMIS_TIMEOUT_MS || 3 * 60 * 1000);
+const TIMEOUT_MS = Number(process.env.DIMY_TIMEOUT_MS || 3 * 60 * 1000);
 // この回数だけ会話したら Claude Code を起動し直す（会話が長くなりすぎて遅くなるのを防ぐ）。
-const MAX_TURNS = Number(process.env.KYMIS_MAX_TURNS || 40);
+const MAX_TURNS = Number(process.env.DIMY_MAX_TURNS || 40);
 const HISTORY_COUNT = 30;
 // 画面への書き込みの間隔。短いほど滑らかだが、Supabase への書き込み回数が増える。
 const STREAM_INTERVAL_MS = 300;
 // Claude Code の作業フォルダ。PC 上の他のファイルに触れないよう、専用フォルダで動かす。
 const WORKDIR = path.join(ROOT, "agent", "workspace");
-// 利用者のアプリが置いてある開発用フォルダ。キーミスはここのコードを読める（書き換えはしない）。
-const DEV_DIR = process.env.KYMIS_DEV_DIR || path.join(os.homedir(), "dev");
-const PERSONA_FILE = "kymis-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
-const MCP_CONFIG_FILE = "kymis-mcp.json"; // WORKDIR からの相対パス
+// 利用者のアプリが置いてある開発用フォルダ。ディミはここのコードを読める（書き換えはしない）。
+const DEV_DIR = process.env.DIMY_DEV_DIR || path.join(os.homedir(), "dev");
+const PERSONA_FILE = "dimy-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
+const MCP_CONFIG_FILE = "dimy-mcp.json"; // WORKDIR からの相対パス
 
 // 終了コード（windows/start-hidden.vbs と start-windows.bat が見る）
 // 3: 自動で起動し直さなくてよい / 4: 更新したので、すぐに起動し直す
 const EXIT_NO_RESTART = 3;
 const EXIT_RESTART_NOW = 4;
-// 自動更新: 確認の間隔と、更新元の GitHub リポジトリ。KYMIS_AUTO_UPDATE=off で止められる。
-const UPDATE_INTERVAL_MS = Number(process.env.KYMIS_UPDATE_INTERVAL_MS || 60 * 60 * 1000);
-// リポジトリの名前を jarvis から kymis に変えた。変える前と後のどちらでも更新できるよう、両方を順に試す。
-const UPDATE_REPOS = (process.env.KYMIS_UPDATE_REPO || "dxdimix/kymis,dxdimix/jarvis").split(",").map((r) => r.trim());
+// 自動更新: 確認の間隔と、更新元の GitHub リポジトリ。DIMY_AUTO_UPDATE=off で止められる。
+const UPDATE_INTERVAL_MS = Number(process.env.DIMY_UPDATE_INTERVAL_MS || 60 * 60 * 1000);
+// リポジトリの名前を jarvis から dimy に変えた。変える前と後のどちらでも更新できるよう、両方を順に試す。
+const UPDATE_REPOS = (process.env.DIMY_UPDATE_REPO || "dxdimix/dimy,dxdimix/kymis,dxdimix/jarvis").split(",").map((r) => r.trim());
 // この時間、会話がなければ更新してよい。
 const IDLE_BEFORE_UPDATE_MS = 2 * 60 * 1000;
 
@@ -53,21 +53,21 @@ if (!SUPABASE_URL || !SECRET_KEY) {
   console.error("SUPABASE_URL と SUPABASE_SECRET_KEY を .env.local に設定してください（.env.example を参照）。");
   process.exit(EXIT_NO_RESTART);
 }
-if (!(await acquireSingleInstance("kymis-agent"))) {
-  console.error("キーミスの常駐プログラムは、すでに別の画面で動いています。");
+if (!(await acquireSingleInstance("dimy-agent"))) {
+  console.error("ディミの常駐プログラムは、すでに別の画面で動いています。");
   process.exit(EXIT_NO_RESTART);
 }
 fs.mkdirSync(WORKDIR, { recursive: true });
 // 人格に、この PC での手引きの場所を書き足して渡す（PC ごとにフォルダの場所が違うため）。
 fs.writeFileSync(
   path.join(WORKDIR, PERSONA_FILE),
-  `${PERSONA}\n- キーミスの手引きのフォルダ（この PC での場所）: ${path.join(ROOT, "docs", "apps")}\n`,
+  `${PERSONA}\n- ディミの手引きのフォルダ（この PC での場所）: ${path.join(ROOT, "docs", "apps")}\n`,
 );
-// キーミスの道具（MCP サーバー）の設定。node はこの常駐プログラムと同じものを、場所を指定して使う。
+// ディミの道具（MCP サーバー）の設定。node はこの常駐プログラムと同じものを、場所を指定して使う。
 fs.writeFileSync(
   path.join(WORKDIR, MCP_CONFIG_FILE),
   JSON.stringify(
-    { mcpServers: { kymis: { command: process.execPath, args: [path.join(ROOT, "agent", "tools", "mcp-server.mjs")] } } },
+    { mcpServers: { dimy: { command: process.execPath, args: [path.join(ROOT, "agent", "tools", "mcp-server.mjs")] } } },
     null,
     2,
   ),
@@ -82,14 +82,14 @@ const claude = new ClaudeSession({
   bin: process.env.CLAUDE_BIN || "claude",
   model: process.env.CLAUDE_MODEL || "sonnet",
   // Claude Code に使わせる道具（docs/monitoring.md の決まりに合わせる）
-  // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、キーミスの道具（MCP、アプリのデータを読み取り専用で読む）
+  // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、ディミの道具（MCP、アプリのデータを読み取り専用で読む）
   // - コマンドを実行する機能（Bash）は渡さない。書き換え（Edit / Write）もさせない
   // - .env などの秘密のファイルは読ませない
-  tools: process.env.KYMIS_TOOLS || "WebSearch,Read,Glob,Grep",
-  allowedTools: process.env.KYMIS_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,mcp__kymis",
+  tools: process.env.DIMY_TOOLS || "WebSearch,Read,Glob,Grep",
+  allowedTools: process.env.DIMY_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,mcp__dimy",
   disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Bash,Edit,Write,NotebookEdit",
   mcpConfigFile: MCP_CONFIG_FILE,
-  // 開発用フォルダ（アプリのコード）と、キーミスの手引き（docs）を読めるようにする
+  // 開発用フォルダ（アプリのコード）と、ディミの手引き（docs）を読めるようにする
   addDirs: [path.join(ROOT, "docs"), ...(DEV_DIR && fs.existsSync(DEV_DIR) ? [DEV_DIR] : [])],
   cwd: WORKDIR,
   systemPromptFile: PERSONA_FILE,
@@ -283,12 +283,12 @@ setInterval(() => {
   if (inFlight === 0) processBacklog();
 }, 30_000).unref();
 
-// キーミスの「覚える」道具（MCP）が、誰のメモとして書くかを知るため、利用者の ID を渡す。
+// ディミの「覚える」道具（MCP）が、誰のメモとして書くかを知るため、利用者の ID を渡す。
 // 利用者は 1 人だけの決まり（画面からの新規登録はしない）。
 try {
   const { data, error } = await supabase.auth.admin.listUsers({ perPage: 2 });
   if (error) throw error;
-  if (data.users.length === 1) process.env.KYMIS_OWNER_ID = data.users[0].id;
+  if (data.users.length === 1) process.env.DIMY_OWNER_ID = data.users[0].id;
   else log(`利用者が ${data.users.length} 人いるため、「覚える」道具は使いません。`);
 } catch (e) {
   log(`利用者を確かめられませんでした（${e.message ?? e}）。「覚える」道具は使いません。`);
@@ -304,7 +304,7 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-if (process.env.KYMIS_AUTO_UPDATE !== "off") {
+if (process.env.DIMY_AUTO_UPDATE !== "off") {
   const enabled = startAutoUpdate({
     root: ROOT,
     repos: UPDATE_REPOS,
@@ -354,7 +354,7 @@ function connect(name, setup, onSubscribed) {
 
 // 画面に「PC が動いている」ことを知らせる（Realtime の Presence）。中身は起動時刻だけ。
 connect(
-  "kymis-presence",
+  "dimy-presence",
   (ch) => ch,
   (ch) => ch.track({ online_at: new Date().toISOString() }),
 );
@@ -364,7 +364,7 @@ connect(
 // つながらなくても（表がないなど）つなぎ直しはしない。つなぎ直しは通信の土台ごと作り直すので、発言の通知まで止めてしまうため。
 let memoryWarned = false;
 supabase
-  .channel("kymis-memory")
+  .channel("dimy-memory")
   .on("postgres_changes", { event: "*", schema: "public", table: "kymis_notes" }, () => (memoryChanged = true))
   .on("postgres_changes", { event: "*", schema: "public", table: "feedback" }, () => (memoryChanged = true))
   .subscribe((status) => {
@@ -376,7 +376,7 @@ supabase
 
 let announced = false;
 connect(
-  "kymis-agent",
+  "dimy-agent",
   (ch) =>
     ch.on(
       "postgres_changes",
@@ -384,7 +384,7 @@ connect(
       (payload) => enqueue(payload.new),
     ),
   () => {
-    if (!announced) log("キーミス、起動しました。画面からの発言を待っています。（終了: Ctrl + C）");
+    if (!announced) log("ディミ、起動しました。画面からの発言を待っています。（終了: Ctrl + C）");
     else log("Supabase につなぎ直しました。");
     announced = true;
     // 接続が切れてつなぎ直したときも、その間に届いた発言を拾う。

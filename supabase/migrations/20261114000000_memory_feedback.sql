@@ -1,7 +1,7 @@
--- キーミスが利用者に合わせて成長するための保存庫。
+-- ディミが利用者に合わせて成長するための保存庫。
 -- feedback: 返事ごとの評価（よい / よくない）とひとこと。
--- kymis_notes: キーミスが覚えていること（話し方の好み、利用者についての事実、決まりごと）。
---   利用者が画面で書いたもの（source = 'user'）と、キーミスが会話から気づいて書き留めたもの（source = 'kymis'）がある。
+-- kymis_notes: ディミが覚えていること（話し方の好み、利用者についての事実、決まりごと）。
+--   利用者が画面で書いたもの（source = 'user'）と、ディミが会話から気づいて書き留めたもの（source = 'kymis'。以前の名前のまま）がある。
 
 create table public.feedback (
   id uuid primary key default gen_random_uuid(),

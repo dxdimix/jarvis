@@ -26,7 +26,7 @@ export function LoginForm({ supabase }: { supabase: SupabaseClient }) {
 
   return (
     <form onSubmit={onSubmit} className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-3 px-4">
-      <h1 className="text-center text-2xl font-semibold tracking-widest text-cyan-400">K.Y.M.I.S</h1>
+      <h1 className="text-center text-2xl font-semibold tracking-widest text-cyan-400">DIMY</h1>
       <input
         type="email"
         required

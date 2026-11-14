@@ -1,6 +1,6 @@
 "use client";
 
-// キーミスが覚えていること。利用者が書いたものと、キーミスが会話から書き留めたものが並ぶ。
+// ディミが覚えていること。利用者が書いたものと、ディミが会話から書き留めたものが並ぶ。
 // 「使う」を外すと、消さずに一時的に使わないようにできる。
 
 import Link from "next/link";
@@ -11,7 +11,7 @@ type Note = {
   id: string;
   kind: "style" | "fact" | "rule";
   content: string;
-  source: "user" | "kymis";
+  source: "user" | "kymis"; // "kymis" はディミが書いたもの（データベースの値は以前の名前のまま）
   active: boolean;
   created_at: string;
 };
@@ -80,7 +80,7 @@ export function Memory({ supabase }: { supabase: SupabaseClient }) {
         </Link>
       </header>
       <p className="mb-4 text-sm text-slate-400">
-        キーミスは、会話のたびにここに書かれたことを守ります。話し方の好みなどを書いてください。会話の中でキーミスが気づいたことも、ここに追加されます。
+        ディミは、会話のたびにここに書かれたことを守ります。話し方の好みなどを書いてください。会話の中でディミが気づいたことも、ここに追加されます。
       </p>
 
       <form onSubmit={add} className="mb-6 flex flex-col gap-2 sm:flex-row">
@@ -115,7 +115,7 @@ export function Memory({ supabase }: { supabase: SupabaseClient }) {
                 <span className="mr-2 rounded bg-slate-800 px-1.5 py-0.5 text-xs text-cyan-300">{KIND_LABEL[n.kind]}</span>
                 <span>{n.content}</span>
                 <div className="mt-1 text-xs text-slate-500">
-                  {n.source === "user" ? "あなたが追加" : "キーミスが会話から追加"}・
+                  {n.source === "user" ? "あなたが追加" : "ディミが会話から追加"}・
                   {new Date(n.created_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}
                 </div>
               </div>
@@ -133,7 +133,7 @@ export function Memory({ supabase }: { supabase: SupabaseClient }) {
       </ul>
 
       <h2 className="mb-2 mt-10 text-sm font-semibold tracking-widest text-cyan-400">最近の評価</h2>
-      <p className="mb-3 text-xs text-slate-500">会話の返事の下の GOOD / BAD で付けたもの。最新の 10 件を、キーミスが次の会話で参考にします。</p>
+      <p className="mb-3 text-xs text-slate-500">会話の返事の下の GOOD / BAD で付けたもの。最新の 10 件を、ディミが次の会話で参考にします。</p>
       <ul className="space-y-2 text-sm">
         {feedback.length === 0 && <li className="text-slate-500">まだありません。</li>}
         {feedback.map((f) => (

@@ -4,10 +4,10 @@ import { TOOLS, handle as rawHandle } from "../agent/tools/mcp-server.mjs";
 type Res = { result?: { serverInfo?: { name: string }; tools?: { name: string }[] }; error?: { message: string } } | null;
 const handle = async (msg: object) => (await rawHandle(msg)) as Res;
 
-describe("キーミスの道具（MCP サーバー）", () => {
+describe("ディミの道具（MCP サーバー）", () => {
   it("初期化と道具の一覧に答える", async () => {
     const init = await handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } });
-    expect(init?.result?.serverInfo?.name).toBe("kymis");
+    expect(init?.result?.serverInfo?.name).toBe("dimy");
     const list = await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     expect(list?.result?.tools?.map((t) => t.name)).toEqual([
       "app_list",

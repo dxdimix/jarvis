@@ -1,6 +1,6 @@
 # デスクトップ PC に、開発用のフォルダ（C:\Users\<名前>\dev）を用意する。
 # GitHub のリポジトリを取り寄せ（すでにあれば最新にし）、Remote Control でどの端末からでも作業できるようにする準備。
-#   irm https://raw.githubusercontent.com/dxdimix/kymis/main/setup-dev-windows.ps1 | iex
+#   irm https://raw.githubusercontent.com/dxdimix/dimy/main/setup-dev-windows.ps1 | iex
 # 何度実行しても問題ない。手元で変更中のフォルダは、上書きせずにそのまま残す。
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +13,7 @@ $Repos = @(
   "umsheet-web",
   "nencho-helper",
   "medical-equipment-manager",
-  "kymis",
+  "dimy",
   "sedori-system",
   "keiba-optimizer"
 )
@@ -48,18 +48,19 @@ Step "開発用フォルダを用意しています"
 New-Item -ItemType Directory -Path $DevDir -Force | Out-Null
 Ok $DevDir
 
-# 2-2. 以前の名前「jarvis」のフォルダを「kymis」に変える（手元に変更がなければ）
-$OldDev = Join-Path $DevDir "jarvis"
-$NewDev = Join-Path $DevDir "kymis"
-if ((Test-Path (Join-Path $OldDev ".git")) -and -not (Test-Path $NewDev)) {
+# 2-2. 以前の名前（kymis、jarvis）のフォルダを「dimy」に変える（手元に変更がなければ）
+$NewDev = Join-Path $DevDir "dimy"
+foreach ($oldName in @("kymis", "jarvis")) {
+  $OldDev = Join-Path $DevDir $oldName
+  if (-not (Test-Path (Join-Path $OldDev ".git")) -or (Test-Path $NewDev)) { continue }
   $ErrorActionPreference = "Continue"
   $changes = git -C $OldDev status --porcelain
   if ($changes) {
-    Warn "dev\jarvis に手元の変更があるので、名前を変えずに残します（変更を GitHub に送ってから、もう一度この1行を実行してください）"
+    Warn "dev\$oldName に手元の変更があるので、名前を変えずに残します（変更を GitHub に送ってから、もう一度この1行を実行してください）"
   } else {
-    git -C $OldDev remote set-url origin "https://github.com/$Owner/kymis.git"
-    try { Rename-Item $OldDev "kymis"; Ok "dev\jarvis を dev\kymis に名前を変えました" }
-    catch { Warn "dev\jarvis の名前を変えられませんでした（開いているプログラムを閉じてから、もう一度この1行を実行してください）" }
+    git -C $OldDev remote set-url origin "https://github.com/$Owner/dimy.git"
+    try { Rename-Item $OldDev "dimy"; Ok "dev\$oldName を dev\dimy に名前を変えました" }
+    catch { Warn "dev\$oldName の名前を変えられませんでした（開いているプログラムを閉じてから、もう一度この1行を実行してください）" }
   }
   $ErrorActionPreference = "Stop"
 }
@@ -92,8 +93,8 @@ $ErrorActionPreference = "Stop"
 
 # 4. すべてのセッションが読む決まり（CLAUDE.md）を置く
 Step "開発の決まりを置いています"
-# 4-1. dev の中で作業するセッションが読む決まり（全文）。元は kymis リポジトリの windows/dev-CLAUDE.md
-$RulesUrl = "https://raw.githubusercontent.com/$Owner/kymis/main/windows/dev-CLAUDE.md"
+# 4-1. dev の中で作業するセッションが読む決まり（全文）。元は dimy リポジトリの windows/dev-CLAUDE.md
+$RulesUrl = "https://raw.githubusercontent.com/$Owner/dimy/main/windows/dev-CLAUDE.md"
 try {
   Invoke-WebRequest -Uri $RulesUrl -OutFile (Join-Path $DevDir "CLAUDE.md") -UseBasicParsing
   Ok "$DevDir\CLAUDE.md"
@@ -103,11 +104,11 @@ try {
 # 4-2. この PC のすべてのセッションが読む決まり（短い一文）。今の中身は残し、印で囲んだ部分だけを入れ替える
 $UserClaudeDir = Join-Path $HOME ".claude"
 $UserClaude = Join-Path $UserClaudeDir "CLAUDE.md"
-$Begin = "<!-- BEGIN: kymis dev rule -->"
-$End = "<!-- END: kymis dev rule -->"
+$Begin = "<!-- BEGIN: dimy dev rule -->"
+$End = "<!-- END: dimy dev rule -->"
 $Block = @"
 $Begin
-## 開発する場所（キーミス K.Y.M.I.S が管理）
+## 開発する場所（ディミ DIMY が管理）
 - アプリ・システムの開発は、必ず ``$DevDir\<アプリ名>`` で行う。新しく作るときもここに作る。
 - 詳しい決まりは ``$DevDir\CLAUDE.md`` を読むこと。
 $End
@@ -115,8 +116,8 @@ $End
 New-Item -ItemType Directory -Path $UserClaudeDir -Force | Out-Null
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 $Current = if (Test-Path $UserClaude) { [IO.File]::ReadAllText($UserClaude, $Utf8) } else { "" }
-# 以前の名前（jarvis）の印で囲んだ部分も、新しい内容に入れ替える
-$Pattern = "(?s)<!-- BEGIN: (kymis|jarvis) dev rule -->.*?<!-- END: (kymis|jarvis) dev rule -->"
+# 以前の名前（kymis、jarvis）の印で囲んだ部分も、新しい内容に入れ替える
+$Pattern = "(?s)<!-- BEGIN: (dimy|kymis|jarvis) dev rule -->.*?<!-- END: (dimy|kymis|jarvis) dev rule -->"
 if ($Current -match $Pattern) {
   $New = [regex]::Replace($Current, $Pattern, { param($m) $Block.Trim() })
 } else {
@@ -132,4 +133,4 @@ Write-Host "   用意できた: $($Done.Count) 個 / 飛ばした: $($Skipped.Co
 if ($Failed.Count) { Write-Host "   失敗したもの: $($Failed -join ', ')" -ForegroundColor Red }
 Write-Host ""
 Write-Host "開発用フォルダ: $DevDir" -ForegroundColor Green
-Write-Host "このフォルダの中で作業すると、キーミス本体（$HOME\kymis、自動更新で上書きされる）とは別に開発できます。" -ForegroundColor Green
+Write-Host "このフォルダの中で作業すると、ディミ本体（$HOME\dimy、自動更新で上書きされる）とは別に開発できます。" -ForegroundColor Green

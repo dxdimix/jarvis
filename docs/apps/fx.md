@@ -1,6 +1,6 @@
 # FX（fx-signal-monitor）のデータの読み方
 
-キーミスが FX の状況を答えるときの手引き。道具では、アプリ名 `fx` で読む。
+ディミが FX の状況を答えるときの手引き。道具では、アプリ名 `fx` で読む。
 コードは `C:\Users\sike1\dev\fx-signal-monitor`。表の意味は `supabase/migrations/` の SQL のコメントに書いてある。
 
 ## 最初に必ずすること：利用者の行だけに絞る

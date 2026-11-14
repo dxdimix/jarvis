@@ -13,7 +13,7 @@ export function safeEnv(env) {
   return Object.fromEntries(
     // Claude Code 自身のログインに使うもの（ANTHROPIC_ / CLAUDE_ で始まる）は残す。
     Object.entries(env).filter(
-      ([k]) => /^(ANTHROPIC_|CLAUDE_)/.test(k) || !/KEY|SECRET|TOKEN|PASSWORD|JARVIS_APP_|KYMIS_APP_|SUPABASE/i.test(k),
+      ([k]) => /^(ANTHROPIC_|CLAUDE_)/.test(k) || !/KEY|SECRET|TOKEN|PASSWORD|JARVIS_APP_|DIMY_APP_|SUPABASE/i.test(k),
     ),
   );
 }

@@ -4,12 +4,12 @@ import { safeEnv } from "../agent/lib/claude-session.mjs";
 import { aliasLegacyEnv } from "../agent/lib/env.mjs";
 
 describe("listApps", () => {
-  it(".env.local の KYMIS_APP_<名前>_URL / _KEY からアプリの一覧を作る", () => {
+  it(".env.local の DIMY_APP_<名前>_URL / _KEY からアプリの一覧を作る", () => {
     const apps = listApps({
-      KYMIS_APP_FX_URL: "https://a.supabase.co",
-      KYMIS_APP_FX_KEY: "sb_secret_x",
-      KYMIS_APP_FX_LABEL: "FX",
-      KYMIS_APP_KABU_URL: "https://b.supabase.co", // キーがないものは使えない
+      DIMY_APP_FX_URL: "https://a.supabase.co",
+      DIMY_APP_FX_KEY: "sb_secret_x",
+      DIMY_APP_FX_LABEL: "FX",
+      DIMY_APP_KABU_URL: "https://b.supabase.co", // キーがないものは使えない
       OTHER: "1",
     });
     expect(Object.keys(apps)).toEqual(["fx"]);
@@ -44,7 +44,7 @@ describe("safeEnv", () => {
       SUPABASE_SECRET_KEY: "s",
       SUPABASE_URL: "u",
       JARVIS_APP_FX_KEY: "k",
-      KYMIS_APP_KABU_KEY: "k",
+      DIMY_APP_KABU_KEY: "k",
       GH_TOKEN: "t",
       CLAUDE_MODEL: "sonnet",
       CLAUDE_CODE_OAUTH_TOKEN: "login",
@@ -54,15 +54,15 @@ describe("safeEnv", () => {
 });
 
 describe("aliasLegacyEnv", () => {
-  it("以前の名前（JARVIS_〇〇）の設定を、新しい名前（KYMIS_〇〇）として読めるようにする", () => {
+  it("以前の名前（JARVIS_〇〇）の設定を、新しい名前（DIMY_〇〇）として読めるようにする", () => {
     const env: Record<string, string | undefined> = {
       JARVIS_APP_FX_URL: "https://old.supabase.co",
       JARVIS_MAX_TURNS: "10",
-      KYMIS_MAX_TURNS: "20", // 新しい名前の値があれば、そちらを優先する
+      DIMY_MAX_TURNS: "20", // 新しい名前の値があれば、そちらを優先する
     };
     aliasLegacyEnv(env);
-    expect(env.KYMIS_APP_FX_URL).toBe("https://old.supabase.co");
-    expect(env.KYMIS_MAX_TURNS).toBe("20");
+    expect(env.DIMY_APP_FX_URL).toBe("https://old.supabase.co");
+    expect(env.DIMY_MAX_TURNS).toBe("20");
     expect(listApps(env)).toEqual({});
   });
 });

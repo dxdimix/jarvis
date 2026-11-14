@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { LoginForm } from "@/components/LoginForm";
 import { Hud } from "@/components/hud/Hud";
 
-// キーミスのメイン画面（声が中心）。文字入力と会話の履歴は、右上のアイコンで開く。
+// ディミのメイン画面（声が中心）。文字入力と会話の履歴は、右上のアイコンで開く。
 export default function Home() {
   const [supabase] = useState(createClient);
   const [session, setSession] = useState<Session | null | undefined>(undefined);

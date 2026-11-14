@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "K.Y.M.I.S",
+  title: "DIMY",
   description: "PC に常駐する個人用 AI エージェント",
-  appleWebApp: { capable: true, title: "キーミス", statusBarStyle: "black" },
+  appleWebApp: { capable: true, title: "ディミ", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = {

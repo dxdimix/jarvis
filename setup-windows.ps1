@@ -1,14 +1,14 @@
-# K.Y.M.I.S（キーミス）：Windows 用の自動セットアップ
+# DIMY（ディミ）：Windows 用の自動セットアップ
 # PowerShell で次の1行を実行すると、必要なものを確認・インストールして、PC の起動時に自動で動くようにする。
-#   irm https://raw.githubusercontent.com/dxdimix/kymis/main/setup-windows.ps1 | iex
+#   irm https://raw.githubusercontent.com/dxdimix/dimy/main/setup-windows.ps1 | iex
 # 何度実行しても問題ない（入っているものはそのまま使い、アプリは最新版に更新する。設定ファイル .env.local は引き継ぐ）。
 # 一度セットアップすると、その後は常駐プログラムが GitHub の新しい版を自動で取り込む（agent/lib/updater.mjs）。
 
 $ErrorActionPreference = "Stop"
-$AppDir = Join-Path $HOME "kymis"
-$Repo = "dxdimix/kymis"
-# 以前の名前「ジャービス」のときの場所。見つかったら設定を引き継ぎ、片付ける。
-$OldDir = Join-Path $HOME "jarvis"
+$AppDir = Join-Path $HOME "dimy"
+$Repo = "dxdimix/dimy"
+# 以前の名前（キーミス、ジャービス）のときの場所。見つかったら設定を引き継ぎ、片付ける。
+$OldDirs = @((Join-Path $HOME "kymis"), (Join-Path $HOME "jarvis"))
 
 function Step($msg) { Write-Host ""; Write-Host "== $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "   OK: $msg" -ForegroundColor Green }
@@ -72,13 +72,16 @@ if (Claude-Path) {
   Ok "インストールしました"
 }
 
-# 3. 動いているキーミス（以前の名前のものも）を止める（ファイルを入れ替えるため）
-Step "動いているキーミスを止めています"
-$StopScript = Join-Path $AppDir "windows\stop-kymis.ps1"
+# 3. 動いているディミ（以前の名前のものも）を止める（ファイルを入れ替えるため）
+Step "動いているディミを止めています"
+$StopScript = Join-Path $AppDir "windows\stop-dimy.ps1"
+$Dirs = @($AppDir) + $OldDirs
 $Running = Get-CimInstance Win32_Process | Where-Object {
-  $_.CommandLine -and (
-    ($_.Name -eq "wscript.exe" -and $_.CommandLine -like "*start-hidden.vbs*" -and ($_.CommandLine -like "*$AppDir*" -or $_.CommandLine -like "*$OldDir*")) -or
-    ($_.Name -eq "cmd.exe" -and ($_.CommandLine -like "*$AppDir\agent\logs*" -or $_.CommandLine -like "*$OldDir\agent\logs*"))
+  $proc = $_
+  $cmd = $proc.CommandLine
+  $cmd -and (
+    ($proc.Name -eq "wscript.exe" -and $cmd -like "*start-hidden.vbs*" -and @($Dirs | Where-Object { $cmd -like "*$_*" }).Count -gt 0) -or
+    ($proc.Name -eq "cmd.exe" -and @($Dirs | Where-Object { $cmd -like "*$_\agent\logs*" }).Count -gt 0)
   )
 } | Sort-Object { if ($_.Name -eq "wscript.exe") { 0 } else { 1 } }
 foreach ($p in $Running) { taskkill.exe /pid $p.ProcessId /T /F | Out-Null }
@@ -88,27 +91,27 @@ if ($Running) { Start-Sleep -Seconds 2; Ok "止めました" } else { Ok "動い
 Step "アプリをダウンロードしています"
 # 最新版の番号を調べて、その版をダウンロードする（番号は .version に書き、自動更新で使う）
 # （GitHub の API は回数制限があるため、git が使う窓口から調べる）
-$Refs = Invoke-WebRequest -Uri "https://github.com/$Repo.git/info/refs?service=git-upload-pack" -Headers @{ "User-Agent" = "git/2.45 kymis-setup" } -UseBasicParsing
+$Refs = Invoke-WebRequest -Uri "https://github.com/$Repo.git/info/refs?service=git-upload-pack" -Headers @{ "User-Agent" = "git/2.45 dimy-setup" } -UseBasicParsing
 $RefsText = [Text.Encoding]::ASCII.GetString($Refs.RawContentStream.ToArray())
 if ($RefsText -notmatch "([0-9a-f]{40}) refs/heads/main") { Fail "最新版の番号を取得できませんでした。少し待ってから、もう一度この1行を実行してください。" }
 $Sha = $Matches[1]
 $ZipUrl = "https://github.com/$Repo/archive/$Sha.zip"
-$Tmp = Join-Path $env:TEMP ("kymis-setup-" + [guid]::NewGuid())
+$Tmp = Join-Path $env:TEMP ("dimy-setup-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 $Zip = Join-Path $Tmp "app.zip"
 Invoke-WebRequest -Uri $ZipUrl -OutFile $Zip -UseBasicParsing
 Expand-Archive -Path $Zip -DestinationPath $Tmp
 $Src = Get-ChildItem $Tmp -Directory | Select-Object -First 1 -ExpandProperty FullName
 $EnvFile = Join-Path $AppDir ".env.local"
-$OldEnvFile = Join-Path $OldDir ".env.local"
+$OldEnvFile = $OldDirs | ForEach-Object { Join-Path $_ ".env.local" } | Where-Object { Test-Path $_ } | Select-Object -First 1
 # 設定ファイルを引き継ぐ。新しい場所になければ、以前の名前の場所から持ってくる。
-$SavedEnv = if (Test-Path $EnvFile) { [IO.File]::ReadAllBytes($EnvFile) } elseif (Test-Path $OldEnvFile) { [IO.File]::ReadAllBytes($OldEnvFile) } else { $null }
+$SavedEnv = if (Test-Path $EnvFile) { [IO.File]::ReadAllBytes($EnvFile) } elseif ($OldEnvFile) { [IO.File]::ReadAllBytes($OldEnvFile) } else { $null }
 if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
 Move-Item $Src $AppDir
 if ($SavedEnv) {
-  # 設定の名前を、以前の「JARVIS_」から今の「KYMIS_」に書き換える（値はそのまま）
+  # 設定の名前を、以前の「JARVIS_」「KYMIS_」から今の「DIMY_」に書き換える（値はそのまま）
   $Utf8 = New-Object System.Text.UTF8Encoding($false)
-  $Text = $Utf8.GetString($SavedEnv) -replace "(?m)^JARVIS_", "KYMIS_"
+  $Text = $Utf8.GetString($SavedEnv) -replace "(?m)^(JARVIS|KYMIS)_", "DIMY_"
   [IO.File]::WriteAllText($EnvFile, $Text, $Utf8)
 }
 Remove-Item $Tmp -Recurse -Force
@@ -151,7 +154,7 @@ Step "PC の起動時に自動で動くようにしています"
 $Shell = New-Object -ComObject WScript.Shell
 $Hidden = Join-Path $AppDir "windows\start-hidden.vbs"
 $Startup = [Environment]::GetFolderPath("Startup")
-$Link = $Shell.CreateShortcut((Join-Path $Startup "キーミス.lnk"))
+$Link = $Shell.CreateShortcut((Join-Path $Startup "ディミ.lnk"))
 $Link.TargetPath = "wscript.exe"
 $Link.Arguments = "`"$Hidden`""
 $Link.WorkingDirectory = $AppDir
@@ -160,30 +163,34 @@ Ok "スタートアップに登録しました"
 
 # デスクトップに「停止」と「起動」のショートカットを作る
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$Link = $Shell.CreateShortcut((Join-Path $Desktop "キーミスを起動.lnk"))
+$Link = $Shell.CreateShortcut((Join-Path $Desktop "ディミを起動.lnk"))
 $Link.TargetPath = "wscript.exe"
 $Link.Arguments = "`"$Hidden`""
 $Link.WorkingDirectory = $AppDir
 $Link.Save()
-$Link = $Shell.CreateShortcut((Join-Path $Desktop "キーミスを停止.lnk"))
+$Link = $Shell.CreateShortcut((Join-Path $Desktop "ディミを停止.lnk"))
 $Link.TargetPath = "powershell.exe"
 $Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$StopScript`""
 $Link.WorkingDirectory = $AppDir
 $Link.Save()
-Ok "デスクトップに「キーミスを起動」「キーミスを停止」を作りました"
+Ok "デスクトップに「ディミを起動」「ディミを停止」を作りました"
 
-# 以前の名前「ジャービス」のショートカットとフォルダを片付ける
-$OldLinks = @((Join-Path $Startup "ジャービス.lnk"), (Join-Path $Desktop "ジャービスを起動.lnk"), (Join-Path $Desktop "ジャービスを停止.lnk"))
-foreach ($l in $OldLinks) { if (Test-Path $l) { Remove-Item $l -Force } }
-if (Test-Path $OldDir) {
-  try { Remove-Item $OldDir -Recurse -Force; Ok "以前の名前のフォルダ（$OldDir）を片付けました" }
-  catch { Warn-Old "以前の名前のフォルダ（$OldDir）を消せませんでした。PC を再起動したあとに、手で消してください。" }
+# 以前の名前（キーミス、ジャービス）のショートカットとフォルダを片付ける
+foreach ($old in @("キーミス", "ジャービス")) {
+  $OldLinks = @((Join-Path $Startup "$old.lnk"), (Join-Path $Desktop "${old}を起動.lnk"), (Join-Path $Desktop "${old}を停止.lnk"))
+  foreach ($l in $OldLinks) { if (Test-Path $l) { Remove-Item $l -Force } }
+}
+foreach ($OldDir in $OldDirs) {
+  if (Test-Path $OldDir) {
+    try { Remove-Item $OldDir -Recurse -Force; Ok "以前の名前のフォルダ（$OldDir）を片付けました" }
+    catch { Warn-Old "以前の名前のフォルダ（$OldDir）を消せませんでした。PC を再起動したあとに、手で消してください。" }
+  }
 }
 
 # 8. 起動
-Step "キーミスを起動します"
+Step "ディミを起動します"
 Start-Process wscript.exe -ArgumentList "`"$Hidden`"" -WorkingDirectory $AppDir
 Write-Host ""
-Write-Host "キーミスが画面なしで動き始めました。ブラウザの画面右上に「PC: オンライン」と出れば準備完了です。" -ForegroundColor Green
+Write-Host "ディミが画面なしで動き始めました。ブラウザの画面右上に「PC: オンライン」と出れば準備完了です。" -ForegroundColor Green
 Write-Host "次回からは、PC を起動するだけで自動で動きます。" -ForegroundColor Green
 Write-Host "動きの記録: $AppDir\agent\logs\agent.log" -ForegroundColor Gray

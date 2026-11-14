@@ -18,6 +18,7 @@ function loadSetting(key: string, fallback: string) {
   try {
     // 以前の名前（jarvis.〇〇）で保存した設定も引き継ぐ。
     return (
+      localStorage.getItem(`dimy.${key}`) ??
       localStorage.getItem(`kymis.${key}`) ??
       localStorage.getItem(`jarvis.${key}`) ??
       fallback
@@ -28,7 +29,7 @@ function loadSetting(key: string, fallback: string) {
 }
 function saveSetting(key: string, value: string) {
   try {
-    localStorage.setItem(`kymis.${key}`, value);
+    localStorage.setItem(`dimy.${key}`, value);
   } catch {}
 }
 
@@ -246,7 +247,7 @@ export function Chat({
         <header className="flex flex-wrap items-center justify-between gap-2 py-4">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold tracking-widest text-cyan-400">
-              K.Y.M.I.S
+              DIMY
             </h1>
             <span
               className="flex items-center gap-1.5 text-xs text-slate-400"
@@ -425,7 +426,7 @@ export function Chat({
               ? "聞いています…"
               : waiting
                 ? "返事を待っています…"
-                : "キーミスに話しかける"
+                : "ディミに話しかける"
           }
           className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2"
         />

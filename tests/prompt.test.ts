@@ -23,7 +23,7 @@ describe("buildFirstTurn", () => {
       "C",
       { now },
     );
-    expect(p).toContain("利用者: A\nキーミス: B");
+    expect(p).toContain("利用者: A\nディミ: B");
     expect(p.endsWith(formatTurn("C", now))).toBe(true);
   });
 

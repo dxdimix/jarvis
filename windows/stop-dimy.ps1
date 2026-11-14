@@ -1,4 +1,4 @@
-﻿# キーミス（K.Y.M.I.S）の常駐プログラム（画面なしで動いているもの）を止める。
+﻿# ディミ（DIMY）の常駐プログラム（画面なしで動いているもの）を止める。
 $AppDir = Split-Path -Parent $PSScriptRoot
 # 先に見張り役（start-hidden.vbs）を止めてから、常駐プログラムと Claude Code を止める。
 $targets = Get-CimInstance Win32_Process | Where-Object {
@@ -8,4 +8,4 @@ $targets = Get-CimInstance Win32_Process | Where-Object {
   )
 } | Sort-Object { if ($_.Name -eq "wscript.exe") { 0 } else { 1 } }
 foreach ($p in $targets) { taskkill.exe /pid $p.ProcessId /T /F | Out-Null }
-if ($targets) { Write-Host "キーミスを停止しました。" } else { Write-Host "キーミスは動いていませんでした。" }
+if ($targets) { Write-Host "ディミを停止しました。" } else { Write-Host "ディミは動いていませんでした。" }

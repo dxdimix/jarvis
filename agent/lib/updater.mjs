@@ -1,4 +1,4 @@
-// PC のキーミス（K.Y.M.I.S）を、GitHub の main の最新版に自動で更新する。
+// PC のディミ（DIMY）を、GitHub の main の最新版に自動で更新する。
 // - 今入っている版（コミットの番号）は、アプリのフォルダの .version に書いておく（setup-windows.ps1 が最初に書く）。
 // - 定期的に GitHub の main の番号を確かめ、違っていれば、会話していない時に入れ替える。
 // - .version がないフォルダ（開発用の git の作業フォルダなど）では何もしない。
@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const UA = { "User-Agent": "kymis-agent" };
+const UA = { "User-Agent": "dimy-agent" };
 
 export function readVersion(root) {
   try {
@@ -30,7 +30,7 @@ export function parseMainSha(refsText) {
  */
 export async function fetchLatestSha(repo) {
   const res = await fetch(`https://github.com/${repo}.git/info/refs?service=git-upload-pack`, {
-    headers: { "User-Agent": "git/2.45 kymis-agent" },
+    headers: { "User-Agent": "git/2.45 dimy-agent" },
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`GitHub に問い合わせできませんでした（${res.status}）`);
@@ -50,7 +50,7 @@ function readOrNull(file) {
  * .env.local、node_modules、agent/workspace、agent/logs はダウンロードした中に含まれないので、そのまま残る。
  */
 export async function applyUpdate({ root, repo, sha, log }) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kymis-update-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dimy-update-"));
   try {
     const tarFile = path.join(tmp, "app.tar.gz");
     // github.com の URL を使う（リポジトリの名前を変えた後も、GitHub が新しい場所へ案内してくれる）。

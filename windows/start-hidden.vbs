@@ -1,4 +1,4 @@
-' Starts the K.Y.M.I.S agent without a window (used by the Windows startup shortcut).
+' Starts the DIMY agent without a window (used by the Windows startup shortcut).
 ' If the agent stops unexpectedly, it is started again after 10 seconds.
 ' Exit code 3 from the agent means "do not restart" (already running, or settings are missing).
 ' Exit code 4 means "updated itself, restart now".
