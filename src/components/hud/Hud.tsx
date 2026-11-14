@@ -167,7 +167,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     setSpeakOn(load(SPEAK_KEY) !== "off");
     setWakeOn(load(WAKE_KEY) === "on");
     setFollowSec(loadNumber(FOLLOW_KEY, 8));
-    setSilenceSec(loadNumber(SILENCE_KEY, 1.5));
+    setSilenceSec(Math.min(3, Math.max(0.5, loadNumber(SILENCE_KEY, 1.5)))); // 0.5〜3 秒
     setHotkeyOn(load(HOTKEY_KEY) !== "off");
     setCaptionSec(loadNumber(CAPTION_KEY, 12));
     /* eslint-enable react-hooks/set-state-in-effect */

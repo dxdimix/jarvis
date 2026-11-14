@@ -173,7 +173,7 @@ function WakeTab(p: SettingsProps) {
         label="話し終わりを待つ時間"
         value={p.silenceSec}
         min={0.5}
-        max={5}
+        max={3}
         step={0.1}
         onChange={p.setSilenceSec}
         def={1.5}
