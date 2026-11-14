@@ -20,6 +20,11 @@ import { startBookmarkSync } from "./lib/bookmarks.mjs";
 import { startHotkeyWatch } from "./lib/hotkey.mjs";
 import { runCommand, startPcStateSync } from "./lib/pc.mjs";
 import { ensureDesktopShortcuts } from "./lib/shortcuts.mjs";
+import { findClaudeBin, refreshWindowsPath } from "./lib/winpath.mjs";
+
+// Windows: デスクトップのショートカットから起動したときも Claude Code が見つかるよう、PATH を最新にする
+refreshWindowsPath();
+const CLAUDE_BIN = findClaudeBin();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // 画面の設定の「再起動」で書く印（次の起動で、すぐ新しい版を確かめる）
@@ -91,7 +96,7 @@ const supabase = createClient(SUPABASE_URL, SECRET_KEY, {
 });
 
 const claude = new ClaudeSession({
-  bin: process.env.CLAUDE_BIN || "claude",
+  bin: CLAUDE_BIN,
   model: process.env.CLAUDE_MODEL || "sonnet",
   // Claude Code に使わせる道具（docs/monitoring.md の決まりに合わせる）
   // - Web 検索、アプリのコードを読む（Read / Glob / Grep）、ディミの道具（MCP、アプリのデータを読み取り専用で読む）
@@ -422,6 +427,7 @@ function startPcCommands(ownerId) {
 ensureDesktopShortcuts({ root: ROOT, log });
 
 // 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
+log(`Claude Code の場所: ${CLAUDE_BIN}`);
 claude.start();
 
 function shutdown() {

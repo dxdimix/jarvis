@@ -91,7 +91,8 @@ export class ClaudeSession {
         if (line.trim()) this.#onLine(line);
       }
     });
-    child.stderr.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
+    // Windows のコマンドプロンプトのメッセージは Shift_JIS なので、文字化けしないように読み分ける
+    child.stderr.on("data", (d) => (stderr = (stderr + decodeOutput(d)).slice(-2000)));
     child.on("error", (e) => {
       if (this.child !== child) return; // 止めた古い Claude Code の通知は無視する
       this.#fail(
@@ -209,6 +210,18 @@ export class ClaudeSession {
     clearTimeout(p.timer);
     this.pending = null;
     p.reject(new Error(message));
+  }
+}
+
+/** 出力を文字にする。UTF-8 として読めなければ（Windows の日本語のメッセージ）Shift_JIS として読む */
+export function decodeOutput(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(String(buf));
+  const utf8 = b.toString("utf8");
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    return new TextDecoder("shift_jis").decode(b);
+  } catch {
+    return utf8;
   }
 }
 

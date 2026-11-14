@@ -23,6 +23,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
   - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` を付けて起動する（付けないと書き終えてから完了まで約 3 秒余計にかかる）。
   - Claude Code を起動した直後の最初の発言にだけ、Supabase の会話履歴を添える。`DIMY_MAX_TURNS`（既定 40）回で起動し直す。
   - 人格は `agent/lib/prompt.mjs` の PERSONA。`--append-system-prompt-file` で渡す（コマンド引数に日本語を直接書くと Windows で崩れるため）。
+  - Windows で Claude Code が見つからない（デスクトップのショートカットから起動すると、サインインした時点の古い PATH のまま）のを防ぐため、起動時に PATH を Windows の設定から読み直し、Claude Code の場所を探して使う（`agent/lib/winpath.mjs`。記録に「Claude Code の場所」を出す）。コマンドプロンプトのエラー（Shift_JIS）は文字化けしないように読む（`decodeOutput`）。
   - 二重起動の防止は `agent/lib/single-instance.mjs`（名前付きパイプ / Unix ソケット）。終了コード 3 は「起動し直さなくてよい」の合図。
   - Realtime の Presence（チャンネル `dimy-presence`）で、画面に PC のオンライン / オフラインを知らせる。
   - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-dimy.ps1`（停止。UTF-8 BOM 付きで保存する）、`windows/restart-dimy.ps1`（再起動。BOM 付き。起動後すぐに新しい版を確かめて更新する `DIMY_UPDATE_NOW=1`）。画面の設定の「再起動」タブからも再起動できる（確認してから、`pc_commands` の `restart` を送る。常駐プログラムは印 `agent/.update-now` を書いて終了コード 4 で起動し直し、次の起動ですぐ新しい版を確かめる。PC が戻ったら画面も読み込み直す）。デスクトップのショートカットは「ディミを再起動」1 つ（更新を反映させるときに使う。常駐プログラムが起動のたびに作り、以前の「起動」「停止」を片付ける。`agent/lib/shortcuts.mjs`）。.bat と .vbs は CRLF（.gitattributes）。
