@@ -256,6 +256,14 @@ async function handle(message) {
     const sec = (ms) => (ms / 1000).toFixed(1);
     log(`返事をしました（書き始め ${sec(firstAt - started)} 秒 / 完了 ${sec(Date.now() - started)} 秒）`);
   } catch (e) {
+    // 画面で強制停止された: そこまでの返事は残し（なければ消し）、発言は終わったことにする
+    if (e?.cancelled) {
+      log("画面で止められたので、返事を作るのをやめました。");
+      if (e.partial?.trim()) await writer.finish(`${e.partial.trim()}\n\n（ここで止めました）`).catch(() => {});
+      else await writer.discard();
+      await supabase.from("messages").update({ status: "done" }).eq("id", claimed.id);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     log(`失敗しました: ${msg}`);
     await writer.discard();
@@ -383,9 +391,21 @@ connect(
 let controlChannel = null;
 connect(
   "dimy-control",
-  (ch) => ch,
+  // 画面の強制停止（ボタン・Esc・「ストップ」）: 作っている返事をやめ、まだ始めていない発言も取り消す
+  (ch) => ch.on("broadcast", { event: "stop" }, () => forceStop()),
   (ch) => (controlChannel = ch),
 );
+async function forceStop() {
+  const partial = claude.cancel();
+  if (partial !== null) claude.start(); // 次の返事を速くするため、すぐ起動し直しておく
+  const { data } = await supabase
+    .from("messages")
+    .update({ status: "error", error: "止めました" })
+    .eq("status", "pending")
+    .eq("role", "user")
+    .select("id");
+  if (partial !== null || data?.length) log(`画面で強制停止されました（取り消した発言 ${data?.length ?? 0} 件）。`);
+}
 if (process.env.DIMY_HOTKEY !== "off") {
   startHotkeyWatch({
     root: ROOT,

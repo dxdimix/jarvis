@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseControl, parseWake, toSpeech } from "../src/lib/wake";
+import { isEcho, parseControl, parseWake, toSpeech } from "../src/lib/wake";
 import { takeSpeakable } from "../src/lib/speech";
 
 describe("parseWake", () => {
@@ -23,6 +23,8 @@ describe("parseControl", () => {
     expect(parseControl("聞かないで")).toBe("mute");
     expect(parseControl("違う")).toBe("cancel");
     expect(parseControl("終わりの時間を教えて")).toBeNull();
+    expect(parseControl("ストップ")).toBe("stop");
+    expect(parseControl("止めて。")).toBe("stop");
   });
 });
 
@@ -40,5 +42,16 @@ describe("takeSpeakable（まとめて読む）", () => {
   });
   it("返事が終わったら、短くても読む", () => {
     expect(takeSpeakable("はい。", 0, true, 50)).toEqual({ chunk: "はい。", next: 3 });
+  });
+});
+
+describe("isEcho（自分の声を拾ったか）", () => {
+  it("話した文とほぼ同じなら自分の声", () => {
+    expect(isEcho("今日の東京は晴れです", "はい。今日の東京は晴れです。最高気温は20度です。")).toBe(true);
+    expect(isEcho("ストップ", "注文をストップしました")).toBe(true);
+  });
+  it("違う話なら自分の声ではない", () => {
+    expect(isEcho("FX の損益を教えて", "今日の東京は晴れです。")).toBe(false);
+    expect(isEcho("ストップ", "今日の東京は晴れです。")).toBe(false);
   });
 });

@@ -224,3 +224,34 @@ body {
     animation: none;
   }
 }
+@keyframes dimy-wave {
+  from { transform: translateX(0); }
+  to { transform: translateX(-40px); }
+}
+.dimy-wave {
+  animation: dimy-wave 1s linear infinite;
+}
+@keyframes dimy-amp {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.dimy-amp {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dimy-amp 0.6s ease-in-out infinite;
+}
+@keyframes dimy-iris {
+  from { transform: scale(1); opacity: 0; }
+  30% { opacity: 0.8; }
+  to { transform: scale(0.12); opacity: 0; }
+}
+.dimy-iris {
+  animation: dimy-iris 1.2s ease-in infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dimy-wave,
+  .dimy-amp,
+  .dimy-iris {
+    animation: none;
+  }
+}

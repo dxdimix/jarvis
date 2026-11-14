@@ -148,6 +148,23 @@ export class ClaudeSession {
     });
   }
 
+  /**
+   * 作っている途中の返事をやめる（画面の強制停止）。Claude Code は止めて捨てる（次の発言で起動し直す）。
+   * @returns {string | null} やめた時点までの返事（作っていなければ null）
+   */
+  cancel() {
+    const p = this.pending;
+    if (!p) return null;
+    clearTimeout(p.timer);
+    this.pending = null;
+    const err = new Error("止めました");
+    err.cancelled = true;
+    err.partial = p.text;
+    p.reject(err);
+    this.stop();
+    return p.text;
+  }
+
   #onLine(line) {
     let ev;
     try {

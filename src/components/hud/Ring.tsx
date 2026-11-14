@@ -3,11 +3,11 @@
 // - いつもゆっくり回る。考え中は速く回り、話し中は中心が脈打ち、聞き取り中は外側が明るくなる。
 // - 状態で色が変わる（通常: 水色 / 注意: 琥珀色 / PC がオフライン: 灰色）。
 // - 今していることが一目で分かるように、球体の中と周りの動きを状態ごとに変える:
-//   聞き取り中: 外から球体へ吸い込まれる波紋と、球体の中で揺れる縦の棒（声を受け取っている）
+//   聞き取り中: 外から球体へ吸い込まれる波紋と、球体の中心へ集まる細い輪（声を受け取っている）
 //   考え中: 球体が暗くなり、周りを光の粒が速く回る
-//   話し中: 球体から外へ広がる波紋と、球体の中で上下に揺れる波形（声を出している）
+//   話し中: 球体から外へ広がる波紋と、球体の中を流れる細い光の波形（声を出している）
 //   呼びかけを待っている間（waiting）: 球体の縁を小さな点がゆっくり回る
-//   球体の下に、今の状態を文字でも出す
+//   球体の下に、今の状態を英語でも出す（LISTENING / THINKING / SPEAKING）
 
 export type RingMode = "idle" | "thinking" | "speaking" | "listening";
 export type RingTone = "normal" | "warn" | "offline";
@@ -36,31 +36,67 @@ function arc(r: number, start: number, end: number) {
   return `M ${a.x} ${a.y} A ${r} ${r} 0 ${large} 1 ${b.x} ${b.y}`;
 }
 
-/** 球体の中の棒（聞き取り中・話し中に揺れる） */
-function Bars({ color, count, width, gap, maxH, speed }: { color: string; count: number; width: number; gap: number; maxH: number; speed: number }) {
-  const total = count * width + (count - 1) * gap;
+/** 正弦波の線（左右に流れ続ける）。period ごとに同じ形なので、period だけ動かすと切れ目なくつながる */
+function wavePath(amp: number, period: number, from: number, to: number) {
+  let d = "";
+  for (let x = from; x <= to; x += 4) {
+    const y = C + amp * Math.sin(((x - from) / period) * Math.PI * 2);
+    d += `${d ? " L" : "M"} ${x} ${Math.round(y * 100) / 100}`;
+  }
+  return d;
+}
+
+/** 話し中: 球体の中を流れる、細い光の波形（3 本を重ねる） */
+function Oscilloscope() {
+  const lines = [
+    { amp: 15, op: 0.95, w: 1.8, dur: 1.1 },
+    { amp: 9, op: 0.55, w: 1.2, dur: 1.7 },
+    { amp: 5, op: 0.35, w: 1, dur: 0.8 },
+  ];
   return (
-    <g>
-      {Array.from({ length: count }, (_, i) => {
-        // 真ん中ほど高く
-        const h = maxH * (0.45 + 0.55 * Math.sin(((i + 0.5) / count) * Math.PI));
-        return (
-          <rect
-            key={i}
-            x={C - total / 2 + i * (width + gap)}
-            y={C - h / 2}
-            width={width}
-            height={h}
-            rx={width / 2}
-            fill={color}
-            className="dimy-eq"
-            style={{ animationDuration: `${speed * (0.7 + ((i * 37) % 10) / 16)}s`, animationDelay: `${-((i * 53) % 10) / 12}s` }}
+    <g clipPath="url(#dimy-inner)">
+      {lines.map((l, i) => (
+        <g key={i} className="dimy-amp" style={{ animationDuration: `${0.5 + i * 0.23}s`, animationDelay: `${-i * 0.17}s` }}>
+          <path
+            d={wavePath(l.amp, 40, C - 100, C + 100)}
+            fill="none"
+            stroke="#ecfeff"
+            strokeOpacity={l.op}
+            strokeWidth={l.w}
+            strokeLinecap="round"
+            className="dimy-wave"
+            style={{ animationDuration: `${l.dur}s` }}
           />
-        );
-      })}
+        </g>
+      ))}
     </g>
   );
 }
+
+/** 聞き取り中: 球体の中心へ集まっていく細い輪と、中心の光 */
+function Iris() {
+  return (
+    <g>
+      {[0, 1, 2].map((i) => (
+        <circle
+          key={i}
+          cx={C}
+          cy={C}
+          r={50}
+          fill="none"
+          stroke="#ecfeff"
+          strokeWidth={1.2}
+          className="dimy-iris"
+          style={{ transformOrigin: `${C}px ${C}px`, animationDelay: `${i * 0.4}s` }}
+        />
+      ))}
+      <circle cx={C} cy={C} r={4} fill="#ecfeff" className="dimy-breathe" />
+      <circle cx={C} cy={C} r={10} fill="none" stroke="#ecfeff" strokeOpacity={0.5} strokeDasharray="2 4" />
+    </g>
+  );
+}
+
+const MODE_EN: Record<RingMode, string> = { idle: "STANDBY", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING" };
 
 export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: RingTone; waiting?: boolean }) {
   const col = COLORS[tone];
@@ -82,6 +118,9 @@ export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: Ri
           <stop offset="80%" stopColor={col.soft} stopOpacity="0.55" />
           <stop offset="100%" stopColor="#020617" stopOpacity="0.2" />
         </radialGradient>
+        <clipPath id="dimy-inner">
+          <circle cx={C} cy={C} r={56} />
+        </clipPath>
         <filter id="dimy-glow" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="3" result="b" />
           <feMerge>
@@ -183,13 +222,13 @@ export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: Ri
         <>
           <g className="dimy-spin" style={{ animationDuration: "1.1s", transformOrigin: `${C}px ${C}px` }}>
             {[0, 14, 28, 42].map((d, i) => {
-              const q = point(82, d);
+              const q = point(73, d);
               return <circle key={d} cx={q.x} cy={q.y} r={5 - i} fill={col.main} fillOpacity={1 - i * 0.22} />;
             })}
           </g>
           <g className="dimy-spin-reverse" style={{ animationDuration: "1.7s", transformOrigin: `${C}px ${C}px` }}>
             {[180, 194, 208].map((d, i) => {
-              const q = point(82, d);
+              const q = point(73, d);
               return <circle key={d} cx={q.x} cy={q.y} r={4 - i} fill={col.main} fillOpacity={0.8 - i * 0.25} />;
             })}
           </g>
@@ -214,8 +253,8 @@ export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: Ri
         <circle cx={C} cy={C} r={62} fill="none" stroke={col.main} strokeOpacity={0.7} />
       </g>
       {/* 球体の中: 聞き取り中は細い縦の棒、話し中は太い波形 */}
-      {mode === "listening" && <Bars color="#ecfeff" count={9} width={4} gap={5} maxH={46} speed={0.55} />}
-      {mode === "speaking" && <Bars color="#020617" count={7} width={6} gap={5} maxH={54} speed={0.4} />}
+      {mode === "listening" && <Iris />}
+      {mode === "speaking" && <Oscilloscope />}
 
       <text
         x={C}
@@ -241,7 +280,7 @@ export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: Ri
           dominantBaseline="central"
           className="dimy-breathe"
         >
-          {modeLabel(mode, tone)}
+          {tone === "offline" ? "OFFLINE" : MODE_EN[mode]}
         </text>
       )}
     </svg>

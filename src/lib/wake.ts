@@ -13,11 +13,15 @@ export function parseWake(text: string): string | null {
   return t.slice(m.index + m[0].length).trim();
 }
 
-export type Control = "end" | "mute" | "cancel";
+export type Control = "end" | "mute" | "cancel" | "stop";
+
+/** 強制停止の言葉（ディミが話している間・考えている間は、文の途中に入っていても受け付ける） */
+export const STOP_WORDS = /(ストップ|すとっぷ|stop|止めて|とめて|止まって|とまって|黙って|だまって|静かに|しずかに|強制終了|中止)/i;
 
 /** 終わり・聞かないで・取り消しの合図なら、その種類。普通の話なら null */
 export function parseControl(text: string): Control | null {
   const t = text.replace(/[、。,.!！?？\s]/g, "");
+  if (/^(ストップ|すとっぷ|stop|止めて|とめて|止まって|とまって|やめて|黙って|だまって|静かに|しずかに|強制終了|中止|全部止めて)$/i.test(t)) return "stop";
   if (/^(マイク(を)?(オフ|切って|止めて)|聞かないで|きかないで|聞くのをやめて|もう聞かないで)/.test(t)) return "mute";
   if (/^(取り消し|とりけし|違う|ちがう|キャンセル|やっぱりいい)$/.test(t)) return "cancel";
   if (/^(終わり|おわり|終了|しゅうりょう|もういい|もう大丈夫|大丈夫|ありがとう|ありがとうございます|以上)$/.test(t)) return "end";
@@ -41,4 +45,19 @@ export function toSpeech(text: string): string {
     .replace(/\n+/g, "。")
     .replace(/。{2,}/g, "。")
     .trim();
+}
+
+/**
+ * 聞こえた言葉が、ディミ自身がさっき話した声（スピーカーの音をマイクが拾ったもの）かどうか。
+ * 2 文字ずつの組み合わせが、話した文の中に半分以上あれば、自分の声とみなす。
+ */
+export function isEcho(heard: string, spoken: string): boolean {
+  const norm = (t: string) => t.replace(/[、。,.!！?？「」『』（）()\s・ー]/g, "").toLowerCase();
+  const h = norm(heard);
+  const sp = norm(spoken);
+  if (!h || !sp) return false;
+  if (h.length < 3) return sp.includes(h);
+  let hit = 0;
+  for (let i = 0; i < h.length - 1; i++) if (sp.includes(h.slice(i, i + 2))) hit++;
+  return hit / (h.length - 1) >= 0.5;
 }

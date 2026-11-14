@@ -2,7 +2,7 @@
 
 // 設定の画面。項目をカテゴリーごとのタブに分ける。設定はこの端末のブラウザに保存する。
 // - 音声: 読み上げ、声の大きさ、声、話す速さ、声の高さ
-// - 呼びかけ: 「ディミ」の呼びかけ、続けて話せる時間、右 Ctrl を 2 回
+// - 聞き取り: 話し終わりを待つ時間、「ディミ」の呼びかけ、続けて話せる時間、右 Ctrl を 2 回
 // - 表示: 天気の地域、字幕を出しておく時間
 
 import { useEffect, useState } from "react";
@@ -13,7 +13,7 @@ import { CloseIcon } from "./Icons";
 type Tab = "voice" | "wake" | "display";
 const TABS: { id: Tab; label: string }[] = [
   { id: "voice", label: "音声" },
-  { id: "wake", label: "呼びかけ" },
+  { id: "wake", label: "聞き取り" },
   { id: "display", label: "表示" },
 ];
 const TAB_KEY = "dimy.settingsTab";
@@ -39,6 +39,8 @@ export type SettingsProps = {
   wakeLastHeard: string; // 確かめる用: 最後に聞こえた言葉
   wakeOn: boolean;
   setWakeOn: (v: boolean) => void;
+  silenceSec: number;
+  setSilenceSec: (v: number) => void;
   followSec: number;
   setFollowSec: (v: number) => void;
   hotkeyOn: boolean;
@@ -158,6 +160,17 @@ function VoiceTab(p: SettingsProps) {
 function WakeTab(p: SettingsProps) {
   return (
     <>
+      <Slider
+        label="話し終わりを待つ時間"
+        value={p.silenceSec}
+        min={0.5}
+        max={5}
+        step={0.1}
+        onChange={p.setSilenceSec}
+        def={1.5}
+        format={(v) => `${v.toFixed(1)} 秒`}
+        note="話している途中でこの時間だけ黙ると、話し終わったとみなして送ります。考えながら話して途中で途切れるときは長く、返事を早くしたいときは短くしてください。マイクのボタンと「ディミ」の呼びかけの両方に効きます。マイクのボタンや右 Ctrl 2 回で終えたときは、待たずにすぐ送ります。"
+      />
       {p.wakeSupported ? (
         <Toggle
           label="「ディミ」の呼びかけを待つ"

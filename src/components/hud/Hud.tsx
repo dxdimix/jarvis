@@ -17,7 +17,7 @@ import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWakeWord } from "@/hooks/useWakeWord";
 import { useActiveDevice } from "@/hooks/useActiveDevice";
-import { toSpeech } from "@/lib/wake";
+import { isEcho, toSpeech } from "@/lib/wake";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
 import { matchBookmark, type Bookmark } from "@/lib/bookmarks";
@@ -52,6 +52,7 @@ const VOICE_KEY = "dimy.voice";
 const RATE_KEY = "dimy.rate"; // 話す速さ
 const PITCH_KEY = "dimy.pitch"; // 声の高さ
 const VOLUME_KEY = "dimy.volume"; // ディミの声の大きさ（PC 全体の音量とは別）
+const SILENCE_KEY = "dimy.silenceSec"; // 話し終わりとみなすまでの無音の時間（秒）
 const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
 const HOTKEY_KEY = "dimy.hotkey"; // 右 Ctrl を 2 回で話すか
 const CAPTION_KEY = "dimy.captionSec"; // 返事の字幕を出しておく時間（秒）
@@ -108,6 +109,15 @@ function useWeather(place: Place | null) {
   return weather;
 }
 
+/** マイクで聞いている間のボタンの印（押すと話し終わって送る。止める印と区別するため） */
+function SendGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </svg>
+  );
+}
+
 export function Hud({ supabase, session }: { supabase: SupabaseClient; session: Session }) {
   const online = useAgentOnline(supabase);
   // ディミの画面が複数開いているときは、最後に操作した画面だけが話す・聞く
@@ -115,6 +125,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
   const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette">("none");
+  const panelRef = useRef(panel);
   // Chrome のブックマーク（PC のディミが写したもの）。表がまだないときは空のまま
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const bookmarksRef = useRef<Bookmark[]>([]);
@@ -125,11 +136,18 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const [speakOn, setSpeakOn] = useState(true);
   const [wakeOn, setWakeOn] = useState(false);
   const [followSec, setFollowSec] = useState(8);
+  const [silenceSec, setSilenceSec] = useState(1.5);
   const [hotkeyOn, setHotkeyOn] = useState(true);
   const [captionSec, setCaptionSec] = useState(12);
   // 返事を言い終えたら、続けて話せる状態にする（呼びかけを待つ設定のとき）
   const followUpAfterSpeech = useRef(false);
-  const wakeRef = useRef<{ followUp: () => void } | null>(null);
+  const wakeRef = useRef<{ followUp: () => void; reset: () => void } | null>(null);
+  // 強制停止した発言（この発言への返事は、あとから届いても読み上げない）
+  const stoppedReplies = useRef(new Set<string>());
+  // 最近読み上げた文（マイクが拾った自分の声を見分けるため）
+  const recentSpoken = useRef<{ text: string; at: number }[]>([]);
+  // 常駐プログラムへの合図（強制停止）を送るチャンネル
+  const controlRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(null);
   const [place, setPlace] = useState<Place | null>(null);
   const [error, setError] = useState("");
   const [captionUntil, setCaptionUntil] = useState(0);
@@ -145,6 +163,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     setSpeakOn(load(SPEAK_KEY) !== "off");
     setWakeOn(load(WAKE_KEY) === "on");
     setFollowSec(loadNumber(FOLLOW_KEY, 8));
+    setSilenceSec(loadNumber(SILENCE_KEY, 1.5));
     setHotkeyOn(load(HOTKEY_KEY) !== "off");
     setCaptionSec(loadNumber(CAPTION_KEY, 12));
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -215,7 +234,14 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     pitch: loadNumber(PITCH_KEY, NaN) || undefined,
     volume: loadNumber(VOLUME_KEY, NaN),
   });
-  const { speak, cancel: cancelSpeech } = speaker;
+  const { speak: speakRaw, cancel: cancelSpeech } = speaker;
+  const speak = useCallback(
+    (text: string) => {
+      recentSpoken.current = [...recentSpoken.current.filter((x) => Date.now() - x.at < 60_000), { text, at: Date.now() }];
+      speakRaw(text);
+    },
+    [speakRaw],
+  );
 
   const appWins = useAppWindows();
   const { open: openApp } = appWins;
@@ -255,23 +281,33 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       },
       [supabase, announce, openApp],
   );
-  const recognition = useSpeechRecognition(handleUtterance);
+  const recognition = useSpeechRecognition(handleUtterance, { silenceMs: silenceSec * 1000 });
 
   // 「ディミ」と呼ばれたときだけ反応する聞き取り
+  // 返事を作っている・届いている間（読み上げの合間も含めて、話している最中として扱う）
+  const replyActive = messages.some(
+    (m) =>
+      (m.role === "user" && (m.status === "pending" || m.status === "processing")) ||
+      (m.role === "assistant" && m.status === "processing"),
+  );
   const wake = useWakeWord({
     enabled: wakeOn && isLeader,
-    speaking: speaker.speaking || recognition.listening,
+    speaking: speaker.speaking || replyActive,
+    paused: recognition.listening,
+    isEcho: (t) => recentSpoken.current.some((x) => Date.now() - x.at < 60_000 && isEcho(t, x.text)),
     followMs: followSec * 1000,
+    silenceMs: silenceSec * 1000,
     volume: speaker.volume,
     onWake: () => announce("はい"),
     onCommand: handleUtterance,
     onControl: (c) => {
-      if (c === "end") announce("わかりました");
+      // 「ストップ」「終わり」「ありがとう」: 聞く・考える・話すをすべて止める
+      if (c === "stop" || c === "end") forceStop();
       if (c === "cancel") announce("取り消しました");
       if (c === "mute") {
+        forceStop();
         setWakeOn(false);
         save(WAKE_KEY, "off");
-        announce("聞くのをやめます");
       }
     },
   });
@@ -297,6 +333,11 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   useEffect(() => {
     for (const m of messages) {
       if (m.role !== "assistant" || !liveIds.current.has(m.id)) continue;
+      // 強制停止した発言への返事は読まない
+      if (m.reply_to && stoppedReplies.current.has(m.reply_to)) {
+        liveIds.current.delete(m.id);
+        continue;
+      }
       const final = m.status !== "processing";
       // 最初の 1 文はすぐ読み、そのあとは 40 文字ほどたまってからまとめて読む（細切れの間を減らす）
       const from = spokenUpTo.current.get(m.id) ?? 0;
@@ -367,6 +408,32 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       .then(({ count }) => setTodayCount(count ?? null));
   }, [supabase, userMsgs]);
 
+  /** 強制停止: 聞き取り・考え中（PC の返事作り）・読み上げ・続けて話せる時間を、すべてやめる */
+  function forceStop() {
+    followUpAfterSpeech.current = false;
+    cancelSpeech();
+    recognition.cancel();
+    wakeRef.current?.reset();
+    for (const m of messages) if (m.role === "user") stoppedReplies.current.add(m.id);
+    liveIds.current.clear();
+    controlRef.current?.send({ type: "broadcast", event: "stop", payload: { at: Date.now() } }).catch(() => {});
+    setPendingLink(null);
+    setNotice({ text: "STOPPED", until: Date.now() + 2500 });
+  }
+  const forceStopRef = useRef(forceStop);
+  useEffect(() => {
+    forceStopRef.current = forceStop;
+    panelRef.current = panel;
+  });
+  // Esc キーでも強制停止（設定などの画面を開いているときは、その画面を閉じるだけ）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && panelRef.current === "none") forceStopRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function onMic() {
     cancelSpeech();
     // 呼びかけを待つ設定なら、「ディミ」と言わずにすぐ話せる状態にする
@@ -392,7 +459,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         onMicRef.current();
       })
       .subscribe();
+    controlRef.current = channel;
     return () => {
+      controlRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [supabase, leaderRef]);
@@ -520,6 +589,21 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
       {/* 下中央：マイク（小窓より手前に出す。周りの空いた所は、下の小窓をそのまま触れるようにする） */}
       <div className="pointer-events-none absolute inset-x-0 bottom-8 z-[900] flex flex-col items-center [&>*]:pointer-events-auto">
+        <div className="relative">
+        {/* 強制停止（いつも出しておく。動いているときは明るくなる。Esc キー・「ストップ」でも同じ） */}
+        <button
+          onClick={forceStop}
+          title="強制停止（Esc ／「ストップ」）"
+          aria-label="強制停止"
+          className={
+            "absolute -left-16 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border backdrop-blur transition " +
+            (mode !== "idle" || wakeListening
+              ? "border-rose-400/80 bg-rose-500/15 text-rose-200 shadow-[0_0_18px_rgba(244,63,94,0.45)] hover:bg-rose-500/30"
+              : "border-cyan-400/25 bg-slate-950/50 text-cyan-300/60 hover:border-rose-400/60 hover:text-rose-200")
+          }
+        >
+          <StopIcon className="h-5 w-5" />
+        </button>
         {recognition.supported ? (
           <button
             onClick={onMic}
@@ -531,13 +615,14 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
                 : "border-cyan-300/60 bg-cyan-500/10 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.35)] hover:bg-cyan-500/20")
             }
           >
-            {recognition.listening ? <StopIcon className="h-7 w-7" /> : <MicIcon className="h-7 w-7" />}
+            {recognition.listening ? <SendGlyph /> : <MicIcon className="h-7 w-7" />}
           </button>
         ) : (
           <button onClick={() => setPanel("chat")} className={iconBtn} aria-label="文字で話しかける" title="このブラウザは音声入力に対応していません。文字で話しかけてください">
             <ChatIcon className="h-5 w-5" />
           </button>
         )}
+        </div>
         {pendingLink && (
           <button
             onClick={() => {
@@ -636,6 +721,11 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           wakeLastHeard={wake.lastHeard}
           wakeOn={wakeOn}
           setWakeOn={changeWake}
+          silenceSec={silenceSec}
+          setSilenceSec={(v) => {
+            setSilenceSec(v);
+            save(SILENCE_KEY, String(v));
+          }}
           followSec={followSec}
           setFollowSec={(v) => {
             setFollowSec(v);

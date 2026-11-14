@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRecognitionClass, type Recognition } from "./useSpeechRecognition";
-import { parseControl, parseWake, type Control } from "@/lib/wake";
+import { parseControl, parseWake, STOP_WORDS, type Control } from "@/lib/wake";
 
 export type WakeState = "off" | "standby" | "command" | "busy" | "followup";
 
@@ -18,11 +18,14 @@ const WINDOW_MS = 8_000; // 呼ばれたあと、話しかけるのを待つ時�
 
 export function useWakeWord(o: {
   enabled: boolean;
-  speaking: boolean;
+  speaking: boolean; // ディミが話している間は、止める言葉（ストップなど）だけを聞く
+  paused?: boolean; // マイクのボタンで聞いている間など、こちらの聞き取りを止める
+  isEcho?: (text: string) => boolean; // ディミ自身が話した声を拾ったものか（拾ったものは無視する）
   onWake: () => void; // 呼ばれた（「はい」と答える）
   onCommand: (text: string) => void; // 話しかけられた内容
   onControl: (c: Control) => void; // 終わり・聞かないで・取り消し
   volume?: number; // 合図の音の大きさ（0〜1。ディミの声の大きさと同じ）
+  silenceMs?: number; // 話し終わりとみなすまでの無音の時間（既定 1.5 秒）。この間に続きを話せば、つなげて 1 つの発言にする
   followMs?: number; // 返事のあと、続けて話せる時間（0 なら続けて話せない。既定 8 秒）
 }) {
   // 内部の状態。使わない設定のときは外には "off" と見せる（下の return）
@@ -34,7 +37,14 @@ export function useWakeWord(o: {
   const [lastHeard, setLastHeard] = useState("");
   const stateRef = useRef<WakeState>("standby");
   const liveRef = useRef(""); // 聞き取り途中の文字（話し終わりの合図で、待たずに送るため）
-  const wokeAt = useRef(0); // 呼ばれた時刻（自分の「はい」を聞き取ってしまったときに無視するため）
+  const bufferRef = useRef(""); // 言い終わった部分をためておく（少し間が空いても、続きとつなげるため）
+  const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wokeAt = useRef(0);
+  // ディミが話し終えてからしばらくは、まだ自分の声の聞き取り結果が遅れて届くので、話している間と同じに扱う
+  const echoUntil = useRef(0);
+  useEffect(() => {
+    if (!o.speaking) echoUntil.current = Date.now() + 1200;
+  }, [o.speaking]); // 呼ばれた時刻（自分の「はい」を聞き取ってしまったときに無視するため）
   const recRef = useRef<Recognition | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cb = useRef(o);
@@ -69,6 +79,9 @@ export function useWakeWord(o: {
   // 話しかけられた内容を渡す（終わり・聞かないで・取り消しの合図なら、それを渡す）
   const submit = useCallback(
     (text: string) => {
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      silenceRef.current = null;
+      bufferRef.current = "";
       liveRef.current = "";
       setInterim("");
       const control = parseControl(text);
@@ -83,31 +96,58 @@ export function useWakeWord(o: {
     [setState],
   );
 
+  // 話している間は待ち、無音が silenceMs 続いたら、ためた分をまとめて送る
+  const armSilence = useCallback(() => {
+    // 話している間は「8 秒黙ったら待機に戻る」を止める（長く話しても途切れないように）
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    if (silenceRef.current) clearTimeout(silenceRef.current);
+    silenceRef.current = setTimeout(() => {
+      silenceRef.current = null;
+      const text = (bufferRef.current + liveRef.current).trim();
+      if (text) submit(text);
+    }, cb.current.silenceMs ?? 1500);
+  }, [submit]);
+
   const handleFinal = useCallback(
     (raw: string) => {
       const s = stateRef.current;
+      // 考えている間（返事を作っている・読み上げている間）は、止める言葉だけを受け付ける。
+      // 「ディミ」も受け付けない（ディミが自分の名前を話したのを拾って、次の会話が始まってしまうため）
+      if (s === "busy") {
+        if (STOP_WORDS.test(raw) && !cb.current.isEcho?.(raw)) cb.current.onControl("stop");
+        return;
+      }
+      // 自分の声を拾ったものは無視する
+      if (s !== "standby" && cb.current.isEcho?.(raw)) return;
       // 呼ばれた直後に聞こえた「はい」は、ディミ自身の声なので無視する
       if (s === "command" && Date.now() - wokeAt.current < 2500 && /^(はい|ハイ)[。、！!]?$/.test(raw.trim())) return;
       const woke = parseWake(raw);
       let text = raw.trim();
-      if (s === "standby" || s === "busy") {
+      if (s === "standby") {
         if (woke === null) return; // 呼びかけでなければ無視
         if (woke === "") {
           wakeUp();
           return;
         }
         text = woke; // 「ディミ、FX を開いて」のように続けて言った
+        stateRef.current = "command";
+        setStateRaw("command");
       } else if (woke !== null) {
         if (woke === "") return; // 聞いている途中の「ディミ」は無視
         text = woke;
       }
-      submit(text);
+      // すぐには送らず、ためておく（続きがあればつなげる）
+      bufferRef.current += text;
+      liveRef.current = "";
+      armSilence();
     },
-    [wakeUp, submit],
+    [wakeUp, armSilence],
   );
 
-  // 「はい」と答えている間は聞き取りを止めない（止めると、続けて話した言葉を取りこぼすため）
-  const paused = o.speaking && state !== "command";
+  // ディミが話している間も聞き取りは止めない（「ストップ」で止められるように）。
+  // 自分の声を拾ってしまうので、話している間は止める言葉だけを受け付ける（onresult の最初）。
+  const paused = Boolean(o.paused);
 
   // 聞き取りの開始・停止（使う設定で、ディミが話していない間だけ聞く）
   useEffect(() => {
@@ -121,6 +161,16 @@ export function useWakeWord(o: {
     rec.interimResults = true;
     rec.continuous = true;
     rec.onresult = (e) => {
+      if ((cb.current.speaking || Date.now() < echoUntil.current) && stateRef.current !== "command") {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (STOP_WORDS.test(t) && !cb.current.isEcho?.(t)) {
+            cb.current.onControl("stop");
+            return;
+          }
+        }
+        return;
+      }
       let live = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -131,11 +181,13 @@ export function useWakeWord(o: {
         else live += r[0].transcript;
       }
       liveRef.current = live;
+      // 話している最中（聞き取り途中の文字が届いている間）は、話し終わりの待ち時間を数え直す
+      if (live && (stateRef.current === "command" || stateRef.current === "followup")) armSilence();
       // 早く反応するため、言い終わるのを待たずに、聞き取り途中の文字が「ディミ」になった時点で応える
       const st = stateRef.current;
-      if ((st === "standby" || st === "busy") && live && parseWake(live) === "") wakeUp();
+      if (st === "standby" && live && parseWake(live) === "") wakeUp();
       // 待機中は、聞き取った文字を画面に出さない（周りの会話を出さないため）
-      setInterim(stateRef.current === "command" || stateRef.current === "followup" ? live : "");
+      setInterim(stateRef.current === "command" || stateRef.current === "followup" ? bufferRef.current + live : "");
     };
     rec.onstart = () => {
       setRunning(true);
@@ -168,7 +220,7 @@ export function useWakeWord(o: {
       setRunning(false);
       recRef.current = null;
     };
-  }, [o.enabled, paused, handleFinal, wakeUp]);
+  }, [o.enabled, paused, handleFinal, wakeUp, armSilence]);
 
   // 使う設定をやめたら、次に使うときのために待機に戻しておく
   useEffect(() => {
@@ -181,6 +233,7 @@ export function useWakeWord(o: {
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (silenceRef.current) clearTimeout(silenceRef.current);
     },
     [],
   );
@@ -197,19 +250,34 @@ export function useWakeWord(o: {
     startCommand: useCallback(() => setState("command"), [setState]),
     /** 返事を言い終えたとき: 8 秒だけ続けて話せる状態にする */
     followUp: useCallback(() => {
+      // 続けて話せる状態にする前に、聞き取り途中のもの（自分の声の残り）を捨てる
+      bufferRef.current = "";
+      liveRef.current = "";
+      echoUntil.current = Math.max(echoUntil.current, Date.now() + 800);
+      recRef.current?.abort(); // 聞き直す（止まったら自動で再開する）
       if (cb.current.followMs === 0) {
         if (stateRef.current === "busy") setState("standby");
       } else if (stateRef.current === "busy" || stateRef.current === "standby") setState("followup");
     }, [setState]),
     /** 話し終わりの合図（ボタンやキー）: ブラウザが言い終わりと判断するのを待たずに送る */
     finish: useCallback(() => {
-      const text = (parseWake(liveRef.current) ?? liveRef.current).trim();
+      const heard = bufferRef.current + liveRef.current;
+      const text = (parseWake(heard) ?? heard).trim();
       liveRef.current = "";
       // 聞き取り途中のものを捨てて聞き直す（同じ言葉が後から届いて二重に送られないように）
       recRef.current?.abort();
       if (text) submit(text);
       else setState("standby");
     }, [submit, setState]),
+    /** 強制停止: ためていた言葉を捨て、続けて話せる時間もやめて、待機に戻す */
+    reset: useCallback(() => {
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      silenceRef.current = null;
+      bufferRef.current = "";
+      liveRef.current = "";
+      setInterim("");
+      setState("standby");
+    }, [setState]),
     /** 待機に戻す */
     standby: useCallback(() => setState("standby"), [setState]),
   };
