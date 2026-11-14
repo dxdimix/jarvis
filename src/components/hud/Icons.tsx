@@ -196,3 +196,12 @@ export function AppIcon({ id, className }: P & { id: string }) {
     </svg>
   );
 }
+
+/** 呼びかけ（「ディミ」）を待つ */
+export const WakeIcon = ({ className, off }: P & { off?: boolean }) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <path d="M8 18.5c1.5 1.8 4.5 1.8 5.5-.5.7-1.6 2.5-2.5 3.3-4.3A6.5 6.5 0 1 0 5.5 9.5" />
+    <path d="M9 10a3 3 0 0 1 6 0c0 1.5-1.5 2-2 3" />
+    {off && <path d="M3 3l18 18" />}
+  </svg>
+);

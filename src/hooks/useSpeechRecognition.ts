@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ブラウザの音声認識（Web Speech API）の最低限の型。TypeScript の標準の型には入っていないため自前で書く。
-type RecognitionResultEvent = {
+export type RecognitionResultEvent = {
   resultIndex: number;
   results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
 };
-type Recognition = {
+export type Recognition = {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
@@ -18,9 +18,9 @@ type Recognition = {
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
 };
-type RecognitionConstructor = new () => Recognition;
+export type RecognitionConstructor = new () => Recognition;
 
-function getRecognitionClass(): RecognitionConstructor | null {
+export function getRecognitionClass(): RecognitionConstructor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;

@@ -14,6 +14,8 @@ import { fetchWeather, findPlace, weatherLabel, type Place, type Weather } from 
 import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useWakeWord } from "@/hooks/useWakeWord";
+import { toSpeech } from "@/lib/wake";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
 import { matchBookmark, type Bookmark } from "@/lib/bookmarks";
@@ -27,6 +29,7 @@ import {
   GearIcon,
   MemoryIcon,
   BookmarkIcon,
+  WakeIcon,
   MicIcon,
   PcIcon,
   ShrinkIcon,
@@ -37,6 +40,7 @@ import {
 
 const PLACE_KEY = "dimy.weatherPlace";
 const SPEAK_KEY = "dimy.speak";
+const WAKE_KEY = "dimy.wake"; // 「ディミ」の呼びかけを待つか（端末ごと。最初はオフ）
 const VOICE_KEY = "dimy.voice";
 const CAPTION_MS = 12_000; // 返事の字幕を出しておく時間
 
@@ -100,6 +104,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const [pendingLink, setPendingLink] = useState<Bookmark | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
+  const [wakeOn, setWakeOn] = useState(false);
+  // 返事を言い終えたら、続けて話せる状態にする（呼びかけを待つ設定のとき）
+  const followUpAfterSpeech = useRef(false);
+  const wakeRef = useRef<{ followUp: () => void } | null>(null);
   const [place, setPlace] = useState<Place | null>(null);
   const [placeInput, setPlaceInput] = useState("");
   const [error, setError] = useState("");
@@ -114,6 +122,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     /* eslint-disable react-hooks/set-state-in-effect */
     if (p) setPlace(JSON.parse(p) as Place);
     setSpeakOn(load(SPEAK_KEY) !== "off");
+    setWakeOn(load(WAKE_KEY) === "on");
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -170,7 +179,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     loadBookmarks();
   }, [loadBookmarks]);
 
-  const speaker = useSpeaker(() => setCaptionUntil(Date.now() + CAPTION_MS), load(VOICE_KEY));
+  const speaker = useSpeaker(() => {
+    setCaptionUntil(Date.now() + CAPTION_MS);
+    if (followUpAfterSpeech.current) {
+      followUpAfterSpeech.current = false;
+      wakeRef.current?.followUp();
+    }
+  }, load(VOICE_KEY));
   const { speak, cancel: cancelSpeech } = speaker;
 
   const appWins = useAppWindows();
@@ -180,13 +195,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const announce = useCallback(
     (text: string) => {
       setNotice({ text, until: Date.now() + 6000 });
-      if (speakOn) speak(text);
+      if (speakOn) speak(toSpeech(text));
     },
     [speak, speakOn],
   );
 
-  const recognition = useSpeechRecognition(
-    useCallback(
+  // 話しかけられた内容の扱い（マイクのボタンでも、呼びかけでも同じ）
+  const handleUtterance = useCallback(
       async (text: string) => {
         setError("");
         // 「〇〇を開いて」は、ディミに聞かずにこの画面ですぐ開く
@@ -210,8 +225,28 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         if (error) setError(`送信できませんでした: ${error.message}`);
       },
       [supabase, announce, openApp],
-    ),
   );
+  const recognition = useSpeechRecognition(handleUtterance);
+
+  // 「ディミ」と呼ばれたときだけ反応する聞き取り
+  const wake = useWakeWord({
+    enabled: wakeOn,
+    speaking: speaker.speaking,
+    onWake: () => announce("はい"),
+    onCommand: handleUtterance,
+    onControl: (c) => {
+      if (c === "end") announce("わかりました");
+      if (c === "cancel") announce("取り消しました");
+      if (c === "mute") {
+        setWakeOn(false);
+        save(WAKE_KEY, "off");
+        announce("聞くのをやめます");
+      }
+    },
+  });
+  useEffect(() => {
+    wakeRef.current = wake;
+  });
 
   // ショートカット: Alt + 数字でアプリを開く（左のアイコンの上から順）
   useEffect(() => {
@@ -232,16 +267,23 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     for (const m of messages) {
       if (m.role !== "assistant" || !liveIds.current.has(m.id)) continue;
       const final = m.status !== "processing";
-      const { chunk, next } = takeSpeakable(m.content, spokenUpTo.current.get(m.id) ?? 0, final);
+      // 最初の 1 文はすぐ読み、そのあとは 40 文字ほどたまってからまとめて読む（細切れの間を減らす）
+      const from = spokenUpTo.current.get(m.id) ?? 0;
+      const { chunk, next } = takeSpeakable(m.content, from, final, from === 0 ? 0 : 40);
       spokenUpTo.current.set(m.id, next);
-      if (speakOn && chunk) speak(chunk);
+      if (speakOn && chunk) speak(toSpeech(chunk));
       if (final) {
         liveIds.current.delete(m.id);
+        // 呼びかけを待つ設定なら、言い終えたあと 8 秒は続けて話せるようにする
+        if (wakeOn) {
+          if (speakOn) followUpAfterSpeech.current = true;
+          else wakeRef.current?.followUp();
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect -- 返事が届いた時刻から字幕を出す
         setCaptionUntil(Date.now() + CAPTION_MS);
       }
     }
-  }, [messages, speak, speakOn]);
+  }, [messages, speak, speakOn, wakeOn]);
 
   // 画面を消さない（ずっと表示しておくため）。対応していないブラウザでは何もしない。
   useEffect(() => {
@@ -268,18 +310,28 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       (m.role === "user" && (m.status === "pending" || m.status === "processing")) ||
       (m.role === "assistant" && m.status === "processing"),
   );
-  const mode: RingMode = recognition.listening ? "listening" : speaker.speaking ? "speaking" : waiting ? "thinking" : "idle";
+  const wakeListening = wake.state === "command" || wake.state === "followup";
+  const mode: RingMode = recognition.listening || wakeListening ? "listening" : speaker.speaking ? "speaking" : waiting ? "thinking" : "idle";
   const tone: RingTone = online === false ? "offline" : "normal";
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant");
   const noticeOn = notice !== null && now !== null && now.getTime() < notice.until;
   const showCaption =
-    recognition.listening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil) || noticeOn;
-  const caption = recognition.listening ? recognition.interim : noticeOn ? notice!.text : lastReply?.content ?? "";
+    recognition.listening || wakeListening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil) || noticeOn;
+  const caption = recognition.listening ? recognition.interim : wakeListening ? wake.interim || "どうぞ" : noticeOn ? notice!.text : lastReply?.content ?? "";
 
   function onMic() {
-    if (recognition.listening) return recognition.stop();
     cancelSpeech();
+    // 呼びかけを待つ設定なら、「ディミ」と言わずにすぐ話せる状態にする
+    if (wakeOn) return wakeListening ? wake.standby() : wake.startCommand();
+    if (recognition.listening) return recognition.stop();
     recognition.start();
+  }
+
+  function toggleWake() {
+    const next = !wakeOn;
+    setWakeOn(next);
+    save(WAKE_KEY, next ? "on" : "off");
+    if (next) announce("「ディミ」と呼んでください");
   }
 
   function toggleSpeak() {
@@ -366,6 +418,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         <button onClick={toggleSpeak} className={iconBtn} title={speakOn ? "読み上げ オン" : "読み上げ オフ"} aria-label="読み上げの切り替え" aria-pressed={speakOn}>
           <SpeakerIcon className="h-5 w-5" off={!speakOn} />
         </button>
+        {wake.supported && (
+          <button
+            onClick={toggleWake}
+            className={iconBtn + (wakeOn ? " border-cyan-300/80 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.45)]" : "")}
+            title={wakeOn ? "「ディミ」の呼びかけを待っています（押すとやめる）" : "「ディミ」の呼びかけを待つ"}
+            aria-label="呼びかけを待つ切り替え"
+            aria-pressed={wakeOn}
+          >
+            <WakeIcon className="h-5 w-5" off={!wakeOn} />
+          </button>
+        )}
         <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
           <GearIcon className="h-5 w-5" />
         </button>
@@ -425,7 +488,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             {pendingLink.title}
           </button>
         )}
-        {(error || recognition.error) && <p className="mt-2 text-xs text-rose-300">{error || recognition.error}</p>}
+        {(error || recognition.error || wake.error) && (
+          <p className="mt-2 text-xs text-rose-300">{error || recognition.error || wake.error}</p>
+        )}
       </div>
 
       {/* ブックマークの一覧（Chrome のブックマーク。押すと別のタブで開く） */}

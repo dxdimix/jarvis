@@ -6,9 +6,15 @@ const SENTENCE_END = /[。！？!?\n]/;
  * text の from 文字目以降から、読み上げてよい部分を取り出す。
  * - 返事の途中（final = false）: 最後の文の区切り（。！？ や改行）までを返す。区切りがなければ何も返さない。
  * - 返事の完了後（final = true）: 残りを全部返す。
+ * - minChars: 返事の途中では、読める部分がこの文字数に満たないうちは待つ（1 文ずつ細切れに読むと、間が不自然に空くため）。
  * @returns chunk: 読み上げる文（前後の空白は除く）、next: 次に読み始める位置
  */
-export function takeSpeakable(text: string, from: number, final: boolean): { chunk: string; next: number } {
+export function takeSpeakable(
+  text: string,
+  from: number,
+  final: boolean,
+  minChars = 0,
+): { chunk: string; next: number } {
   if (from >= text.length) return { chunk: "", next: from };
   let end = text.length;
   if (!final) {
@@ -20,6 +26,7 @@ export function takeSpeakable(text: string, from: number, final: boolean): { chu
       }
     }
     if (end === -1) return { chunk: "", next: from };
+    if (text.slice(from, end).trim().length < minChars) return { chunk: "", next: from };
   }
   return { chunk: text.slice(from, end).trim(), next: end };
 }
