@@ -55,3 +55,40 @@ export async function fetchWeather(place: Place): Promise<Weather> {
     rain: j.daily.precipitation_probability_max?.[0] ?? null,
   };
 }
+
+export type HourWeather = { time: string; temperature: number; code: number; rain: number | null };
+export type DayWeather = { date: string; code: number; max: number; min: number; rain: number | null; sunrise: string; sunset: string };
+export type Forecast = { hours: HourWeather[]; days: DayWeather[] };
+
+/** 詳しい天気: これから 36 時間の 1 時間ごとと、2 日前から 7 日後までの日ごと。 */
+export async function fetchForecast(place: Place): Promise<Forecast> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
+    "&hourly=temperature_2m,weather_code,precipitation_probability" +
+    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset" +
+    "&timezone=Asia%2FTokyo&past_days=2&forecast_days=8";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`天気を取得できませんでした（${res.status}）`);
+  const j = await res.json();
+  // 今の時刻（日本時間）以降の 36 時間
+  const nowKey = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(0, 13); // 例: 2026-11-14 20
+  const hours: HourWeather[] = (j.hourly.time as string[])
+    .map((time, i) => ({
+      time,
+      temperature: j.hourly.temperature_2m[i],
+      code: j.hourly.weather_code[i],
+      rain: j.hourly.precipitation_probability?.[i] ?? null,
+    }))
+    .filter((h) => h.time.replace("T", " ").slice(0, 13) >= nowKey)
+    .slice(0, 36);
+  const days: DayWeather[] = (j.daily.time as string[]).map((date, i) => ({
+    date,
+    code: j.daily.weather_code[i],
+    max: j.daily.temperature_2m_max[i],
+    min: j.daily.temperature_2m_min[i],
+    rain: j.daily.precipitation_probability_max?.[i] ?? null,
+    sunrise: j.daily.sunrise?.[i] ?? "",
+    sunset: j.daily.sunset?.[i] ?? "",
+  }));
+  return { hours, days };
+}

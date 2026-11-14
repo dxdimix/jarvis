@@ -56,6 +56,9 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 - パレット `/palette?n=<モニター番号>`: 固定ウィンドウだけを並べる画面。メイン画面の右上のボタンからモニターを選んで開く（getScreenDetails。初回は「ウィンドウの管理」の許可）。
 - メイン画面の計器（`HudChrome.tsx`）: 四隅の枠、時刻の目盛り、球体の周りの角度のリングと走査線、右の SYSTEM（PC との接続・返事までの時間・今日の会話数・固定ウィンドウの数・状態）と LOG。SVG の座標は丸める（サーバーとブラウザで小数の端が変わると表示が食い違うため）。
 - 声の大きさ（設定の音声のタブ）: 読み上げの volume。PC 全体の音量とは別（PC の音量より大きくはできない）。
+- カレンダー（左下の日時を押す。`CalendarPanel.tsx`）: Google カレンダー（マスターアカウント）と Google Calendar API でつなぐ（利用者が Google Cloud で作った OAuth の鍵。`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` を Vercel と PC の .env.local に置く。これは Supabase の secret キーではないので Vercel に置いてよい）。「Google カレンダーとつなぐ」（`/api/google/login` → `/api/google/callback`）で更新用の鍵を表 `google_tokens`（本人だけ読み書きできる RLS）に保存。予定は `/api/google/events`（GET で表示しているカレンダーすべて、POST で追加）。共通の中身は `agent/lib/gcal.mjs`。開いている間は 2 分ごとに読み直す。
+  - DIMY が登録する予定は、Google カレンダーの中の「DIMY」という別のカレンダーに入れる（なければ作る。説明の最後に「DIMY から登録」）。声で頼まれたときも、MCP の `calendar_add`（`agent/tools/calendar.mjs`）でここに入れる。読むのは `calendar_events`。
+- 天気の詳細（右下の天気を押す。`WeatherPanel.tsx`）: Open-Meteo の 1 時間ごと（これから 36 時間）と日ごと（おととい〜7 日後）。
 - Chrome のブックマーク: PC のディミが、Chrome の「Local State」から利用者のメールアドレスのプロフィールを探し、その「Bookmarks」（JSON）を 5 分ごとに確かめて、変わったら表 `bookmarks` に写す（`agent/lib/bookmarks.mjs`。画面からは読むだけ）。画面は「〇〇を開いて」でアプリの一覧になければブックマークから探して別のタブで開く（`src/lib/bookmarks.ts`）。ブラウザに止められたら、押して開くボタンを出す。右上のブックマークのアイコンで一覧も見られる。
 - Google（ドキュメント・スプレッドシート・カレンダー・Gmail・ドライブ）: 利用者は、探す・読む・作る・書き換える・消すのすべてを任せると決めた。ただし消す前は必ず利用者に確かめる。claude.ai のコネクタを使う（利用者の PC の Claude Code で Google Drive・Google Sheets がつながっていることを確認済み。Gmail・Google Calendar は利用者が claude.ai で追加する）。常駐プログラムは `--strict-mcp-config` を外してコネクタを読み込み、使ってよい道具を allowedTools で `mcp__claude_ai_<名前>` に絞る（`DIMY_CONNECTORS`、`connectorToolPrefix`）。起動の知らせ（init）で、つながっているコネクタと道具の数を記録に残す。決まりは人格の「Google」の節。
 - 成長の仕組み: 返事ごとの評価（`feedback`、会話の GOOD / BAD）と、覚えていること（`kymis_notes`、`/memory` で見る・足す・消す）。常駐プログラムは、Claude Code を起動した最初の発言に「覚えていること」と最新 10 件の評価を添える（`buildMemoryBlock`）。どちらかが変わったら次の発言で Claude Code を起動し直す。ディミは MCP の `memory_add` で自分で書き留められる（ディミ自身の表だけ。利用者の ID は起動時に Supabase の利用者一覧から決める）。
@@ -78,6 +81,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。
+- Google の OAuth の鍵（`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`）は Vercel の環境変数と PC の `.env.local` に置く。リポジトリや画面のコードには入れない。
 - 画面から使うのは publishable キーだけ。データの保護は RLS で行う。テーブルを足したら必ず RLS とポリシーを書く。
 - 画面からの新規登録はしない。アカウントは Supabase の管理画面で作る（`supabase/config.toml` でも enable_signup = false）。
 - テーブルの変更は `npm run db:new -- <名前>` で SQL ファイルを作って行い、管理画面で直接変えない。

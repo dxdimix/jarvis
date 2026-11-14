@@ -38,6 +38,8 @@ import { Ring, type RingMode, type RingTone } from "./Ring";
 import { DataField } from "./DataField";
 import { Settings } from "./Settings";
 import { HudChrome } from "./HudChrome";
+import { WeatherPanel } from "./WeatherPanel";
+import { CalendarPanel } from "./CalendarPanel";
 import { DropOverlay, PinBoard, usePinBoard, usePinDrop } from "@/components/pins/PinBoard";
 import { PinAdd } from "@/components/pins/PinAdd";
 import { ScreenPicker } from "@/components/pins/ScreenPicker";
@@ -137,7 +139,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const { leader: isLeader, leaderRef } = useActiveDevice(supabase);
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette">("none");
+  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette" | "weather" | "calendar">("none");
   const panelRef = useRef(panel);
   // Chrome のブックマーク（PC のディミが写したもの）。表がまだないときは空のまま
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -167,6 +169,16 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const weather = useWeather(place);
   const liveIds = useRef(new Set<string>());
   const spokenUpTo = useRef(new Map<string, number>());
+
+  // Google カレンダーのログインから戻ってきたとき: 結果を知らせて、カレンダーを開く
+  useEffect(() => {
+    const g = new URLSearchParams(location.search).get("google");
+    if (!g) return;
+    history.replaceState(null, "", location.pathname);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPanel("calendar");
+    if (!g.startsWith("connected")) setError(`Google カレンダーとつなげませんでした（${g}）`);
+  }, []);
 
   // ブラウザに保存した設定を読む（ブラウザでしか読めないため、表示のあとで）
   useEffect(() => {
@@ -723,14 +735,25 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       </nav>
 
       {/* 左下：日時 */}
-      <div className="absolute bottom-6 left-6 font-mono">
+      <button
+        onClick={() => setPanel(panel === "calendar" ? "none" : "calendar")}
+        className="absolute bottom-6 left-6 rounded-lg px-2 py-1 text-left font-mono transition hover:bg-cyan-400/10"
+        title="カレンダー（Google カレンダーの予定）"
+        aria-label="カレンダーを開く"
+      >
         <div className="text-2xl tracking-widest text-cyan-200 sm:text-4xl drop-shadow-[0_0_10px_rgba(34,211,238,0.45)]">{time}</div>
         <div className="mt-1 text-xs tracking-[0.25em] text-cyan-400/70">{date}</div>
-      </div>
+      </button>
+      {panel === "calendar" && <CalendarPanel session={session} onClose={closePanel} />}
 
       {/* 右下：天気 */}
       {weather && (
-        <div className="absolute bottom-6 right-6 flex items-center gap-3" title={`${place?.name} ${weatherLabel(weather.code)}`}>
+        <button
+          onClick={() => setPanel(panel === "weather" ? "none" : "weather")}
+          className="absolute bottom-6 right-6 flex items-center gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-cyan-400/10"
+          title={`${place?.name} ${weatherLabel(weather.code)}（押すと詳しく）`}
+          aria-label="天気の詳細"
+        >
           <WeatherIcon code={weather.code} className="h-10 w-10 text-cyan-300" />
           <div className="font-mono">
             <div className="text-2xl text-cyan-200 sm:text-3xl">{Math.round(weather.temperature)}°</div>
@@ -738,8 +761,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
               {Math.round(weather.max)}° / {Math.round(weather.min)}°{weather.rain !== null && ` ・${weather.rain}%`}
             </div>
           </div>
-        </div>
+        </button>
       )}
+      {panel === "weather" && place && <WeatherPanel place={place} onClose={closePanel} />}
 
       {/* 下中央：マイク（小窓より手前に出す。周りの空いた所は、下の小窓をそのまま触れるようにする） */}
       <div className="pointer-events-none absolute inset-x-0 bottom-8 z-[900] flex flex-col items-center [&>*]:pointer-events-auto">

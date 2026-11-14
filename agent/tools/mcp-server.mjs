@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { run } from "./appdata.mjs";
 import { addNote, listNotes } from "./memory.mjs";
 import { listClaudeSessions, profilesNow, runCommand } from "../lib/pc.mjs";
+import { calendarAdd, calendarEvents } from "./calendar.mjs";
 
 const SERVER = { name: "dimy", version: "1.0.0" };
 
@@ -26,6 +27,31 @@ const where = {
 const noLog = () => {};
 
 export const TOOLS = [
+  {
+    name: "calendar_events",
+    description: "利用者の Google カレンダー（マスターアカウント。表示しているカレンダーすべて）の予定を返す。from / to は \"2026-11-20\" か ISO の日時。省くと今日から 7 日。",
+    inputSchema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } },
+    call: (a) => calendarEvents(a),
+  },
+  {
+    name: "calendar_add",
+    description:
+      "利用者の Google カレンダーの「DIMY」カレンダーに予定を入れる（DIMY から登録した予定だと分かるように、必ずこれを使う）。" +
+      "start / end は時刻ありなら \"2026-11-20T10:00:00+09:00\"、終日なら \"2026-11-20\"。end を省くと 1 時間（終日なら 1 日）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "予定の名前" },
+        start: { type: "string" },
+        end: { type: "string" },
+        allDay: { type: "boolean" },
+        location: { type: "string" },
+        description: { type: "string", description: "メモ（省略可）" },
+      },
+      required: ["title", "start"],
+    },
+    call: (a) => calendarAdd(a),
+  },
   {
     name: "chrome_accounts",
     description: "PC の Chrome のアカウント（プロフィール）の一覧を返す。番号がアカウントの番号（アカウント1, 2, …）。",
