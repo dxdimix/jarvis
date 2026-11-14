@@ -78,6 +78,21 @@ export function AdminPanel({ supabase, onClose }: { supabase: SupabaseClient; on
   const [query, setQuery] = useState("");
   const [onlyBad, setOnlyBad] = useState(false);
   const [auto, setAuto] = useState(true);
+  // 並び順（古い順 / 新しい順）。この端末のブラウザに覚えておく
+  const [newestFirst, setNewestFirst] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNewestFirst(localStorage.getItem("dimy.adminOrder") === "newest");
+    } catch {}
+  }, []);
+  const toggleOrder = () => {
+    const next = !newestFirst;
+    setNewestFirst(next);
+    try {
+      localStorage.setItem("dimy.adminOrder", next ? "newest" : "oldest");
+    } catch {}
+  };
   const [data, setData] = useState<{ rows: Row[]; error?: string } | null>(null);
   const [copied, setCopied] = useState("");
 
@@ -105,8 +120,9 @@ export function AdminPanel({ supabase, onClose }: { supabase: SupabaseClient; on
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (data?.rows ?? []).filter((r) => (!onlyBad || r.bad) && (!q || `${r.kind} ${r.text}`.toLowerCase().includes(q)));
-  }, [data, query, onlyBad]);
+    const list = (data?.rows ?? []).filter((r) => (!onlyBad || r.bad) && (!q || `${r.kind} ${r.text}`.toLowerCase().includes(q)));
+    return newestFirst ? [...list].reverse() : list;
+  }, [data, query, onlyBad, newestFirst]);
 
   const flash = (label: string) => {
     setCopied(label);
@@ -161,6 +177,13 @@ export function AdminPanel({ supabase, onClose }: { supabase: SupabaseClient; on
               </option>
             ))}
           </select>
+          <button
+            onClick={toggleOrder}
+            className="rounded border border-cyan-500/40 px-2 py-1.5 text-cyan-200 hover:bg-cyan-400/10"
+            title="並び順を入れ替える（コピーもこの順になる）"
+          >
+            {newestFirst ? "新しい順 ↓" : "古い順 ↓"}
+          </button>
           <label className="flex items-center gap-1 text-slate-300">
             <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-cyan-400" />
             10 秒ごとに更新
