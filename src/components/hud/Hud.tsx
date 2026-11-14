@@ -231,7 +231,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   // 「ディミ」と呼ばれたときだけ反応する聞き取り
   const wake = useWakeWord({
     enabled: wakeOn,
-    speaking: speaker.speaking,
+    speaking: speaker.speaking || recognition.listening,
     onWake: () => announce("はい"),
     onCommand: handleUtterance,
     onControl: (c) => {
@@ -322,10 +322,28 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   function onMic() {
     cancelSpeech();
     // 呼びかけを待つ設定なら、「ディミ」と言わずにすぐ話せる状態にする
-    if (wakeOn) return wakeListening ? wake.standby() : wake.startCommand();
+    if (wakeOn) return wakeListening ? wake.finish() : wake.startCommand();
     if (recognition.listening) return recognition.stop();
     recognition.start();
   }
+  // PC で右 Ctrl を 2 回押したとき（常駐プログラムが知らせてくる）: 話し始め / 話し終わって送る
+  const onMicRef = useRef(onMic);
+  useEffect(() => {
+    onMicRef.current = onMic;
+  });
+  useEffect(() => {
+    const channel = supabase
+      .channel("dimy-control")
+      .on("broadcast", { event: "hotkey" }, () => {
+        // スマホなど、指で操作する端末では反応しない（PC で押したキーでスマホが聞き始めないように）
+        if (window.matchMedia("(pointer: coarse)").matches) return;
+        onMicRef.current();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
 
   function toggleWake() {
     const next = !wakeOn;

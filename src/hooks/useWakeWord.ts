@@ -28,6 +28,7 @@ export function useWakeWord(o: {
   const [interim, setInterim] = useState("");
   const [error, setError] = useState("");
   const stateRef = useRef<WakeState>("standby");
+  const liveRef = useRef(""); // 聞き取り途中の文字（話し終わりの合図で、待たずに送るため）
   const wokeAt = useRef(0); // 呼ばれた時刻（自分の「はい」を聞き取ってしまったときに無視するため）
   const recRef = useRef<Recognition | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +60,23 @@ export function useWakeWord(o: {
     cb.current.onWake();
   }, [setState]);
 
+  // 話しかけられた内容を渡す（終わり・聞かないで・取り消しの合図なら、それを渡す）
+  const submit = useCallback(
+    (text: string) => {
+      liveRef.current = "";
+      setInterim("");
+      const control = parseControl(text);
+      if (control) {
+        setState("standby");
+        cb.current.onControl(control);
+        return;
+      }
+      setState("busy");
+      cb.current.onCommand(text);
+    },
+    [setState],
+  );
+
   const handleFinal = useCallback(
     (raw: string) => {
       const s = stateRef.current;
@@ -77,17 +95,9 @@ export function useWakeWord(o: {
         if (woke === "") return; // 聞いている途中の「ディミ」は無視
         text = woke;
       }
-      setInterim("");
-      const control = parseControl(text);
-      if (control) {
-        setState("standby");
-        cb.current.onControl(control);
-        return;
-      }
-      setState("busy");
-      cb.current.onCommand(text);
+      submit(text);
     },
-    [setState, wakeUp],
+    [wakeUp, submit],
   );
 
   // 「はい」と答えている間は聞き取りを止めない（止めると、続けて話した言葉を取りこぼすため）
@@ -111,6 +121,7 @@ export function useWakeWord(o: {
         if (r.isFinal) handleFinal(r[0].transcript);
         else live += r[0].transcript;
       }
+      liveRef.current = live;
       // 早く反応するため、言い終わるのを待たずに、聞き取り途中の文字が「ディミ」になった時点で応える
       const st = stateRef.current;
       if ((st === "standby" || st === "busy") && live && parseWake(live) === "") wakeUp();
@@ -170,6 +181,15 @@ export function useWakeWord(o: {
     followUp: useCallback(() => {
       if (stateRef.current === "busy" || stateRef.current === "standby") setState("followup");
     }, [setState]),
+    /** 話し終わりの合図（ボタンやキー）: ブラウザが言い終わりと判断するのを待たずに送る */
+    finish: useCallback(() => {
+      const text = (parseWake(liveRef.current) ?? liveRef.current).trim();
+      liveRef.current = "";
+      // 聞き取り途中のものを捨てて聞き直す（同じ言葉が後から届いて二重に送られないように）
+      recRef.current?.abort();
+      if (text) submit(text);
+      else setState("standby");
+    }, [submit, setState]),
     /** 待機に戻す */
     standby: useCallback(() => setState("standby"), [setState]),
   };

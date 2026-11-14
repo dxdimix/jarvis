@@ -17,6 +17,7 @@ import { PERSONA, buildFirstTurn, buildMemoryBlock, formatTurn } from "./lib/pro
 import { startAutoUpdate } from "./lib/updater.mjs";
 import { aliasLegacyEnv } from "./lib/env.mjs";
 import { startBookmarkSync } from "./lib/bookmarks.mjs";
+import { startHotkeyWatch } from "./lib/hotkey.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
@@ -377,6 +378,24 @@ connect(
   (ch) => ch,
   (ch) => ch.track({ online_at: new Date().toISOString() }),
 );
+
+// 右 Ctrl を 2 回押したことを画面に知らせる（Realtime の Broadcast）。送るのは「押された」ことだけ。
+let controlChannel = null;
+connect(
+  "dimy-control",
+  (ch) => ch,
+  (ch) => (controlChannel = ch),
+);
+if (process.env.DIMY_HOTKEY !== "off") {
+  startHotkeyWatch({
+    root: ROOT,
+    log,
+    onDouble: () => {
+      if (!controlChannel) return log("キーの見張り: Supabase につながっていないため、画面に知らせられませんでした。");
+      controlChannel.send({ type: "broadcast", event: "hotkey", payload: { at: Date.now() } }).catch(() => {});
+    },
+  });
+}
 
 // 「覚えていること」と評価の変化を見張る。発言の通知とは別のチャンネルにする
 // （表がまだないデータベースでも、発言の通知が止まらないように）。
