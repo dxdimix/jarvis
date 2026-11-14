@@ -931,7 +931,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           online={online}
           onRestartPc={async () => {
             logActivity(supabase, "restart", "設定から PC の DIMY を再起動");
-            const r = await sendPcCommand(supabase, "restart", {});
+            // PC は 30 秒ごとにも頼みを確かめ直すので、40 秒まで待つ
+            const r = await sendPcCommand(supabase, "restart", {}, 40_000);
+            if (r.sent && !r.ok && r.result === "PC から返事がありません。")
+              return {
+                ok: false,
+                result: "PC の DIMY から返事がありませんでした。PC の DIMY が古い版のままの可能性があります。PC のデスクトップの「ディミを再起動」を押してください。",
+              };
             if (!r.sent && /check constraint|pc_commands_kind_check/.test(r.result))
               return { ok: false, result: "データベースの更新（20261115100000_pc_commands_restart.sql）がまだです。SQL Editor で実行してください。" };
             return r;

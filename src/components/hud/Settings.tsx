@@ -331,7 +331,7 @@ function RestartTab(p: SettingsProps) {
 
   async function restart() {
     setStep("sending");
-    setMsg("PC のディミに伝えています…");
+    setMsg("PC のディミに伝えています…（最大 40 秒）");
     const r = await p.onRestartPc();
     if (!r.ok) {
       setStep("idle");
