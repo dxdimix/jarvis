@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import { ClaudeSession } from "./lib/claude-session.mjs";
+import { ClaudeSession, connectorToolPrefix } from "./lib/claude-session.mjs";
 import { acquireSingleInstance } from "./lib/single-instance.mjs";
 import { PERSONA, buildFirstTurn, buildMemoryBlock, formatTurn } from "./lib/prompt.mjs";
 import { startAutoUpdate } from "./lib/updater.mjs";
@@ -34,6 +34,12 @@ const HISTORY_COUNT = 30;
 const STREAM_INTERVAL_MS = 300;
 // Claude Code の作業フォルダ。PC 上の他のファイルに触れないよう、専用フォルダで動かす。
 const WORKDIR = path.join(ROOT, "agent", "workspace");
+// ディミに使わせる claude.ai のコネクタ（Google のサービス）。利用者が claude.ai でつないだものだけが実際に使える。
+// 利用者の決まり: 探す・読む・作る・書き換える・消すのすべてを任せる（消す前は必ず確かめる。人格に書いてある）。
+const CONNECTORS = (process.env.DIMY_CONNECTORS ?? "claude.ai Google Drive,claude.ai Google Sheets,claude.ai Gmail,claude.ai Google Calendar")
+  .split(",")
+  .map((c) => c.trim())
+  .filter(Boolean);
 // 利用者のアプリが置いてある開発用フォルダ。ディミはここのコードを読める（書き換えはしない）。
 const DEV_DIR = process.env.DIMY_DEV_DIR || path.join(os.homedir(), "dev");
 const PERSONA_FILE = "dimy-persona.md"; // WORKDIR からの相対パス（Windows の日本語ユーザー名でも崩れないように）
@@ -87,7 +93,15 @@ const claude = new ClaudeSession({
   // - コマンドを実行する機能（Bash）は渡さない。書き換え（Edit / Write）もさせない
   // - .env などの秘密のファイルは読ませない
   tools: process.env.DIMY_TOOLS || "WebSearch,Read,Glob,Grep",
-  allowedTools: process.env.DIMY_ALLOWED_TOOLS || "WebSearch,Read,Glob,Grep,mcp__dimy",
+  allowedTools: process.env.DIMY_ALLOWED_TOOLS || ["WebSearch,Read,Glob,Grep,mcp__dimy", ...CONNECTORS.map(connectorToolPrefix)].join(","),
+  useConnectors: CONNECTORS.length > 0,
+  onInit: (ev) => {
+    // どのコネクタが使えるかを記録に残す（つながっていないものは、利用者が claude.ai で追加・ログインする）
+    const google = (ev.mcp_servers ?? []).filter((m) => CONNECTORS.includes(m.name));
+    if (google.length) log(`コネクタ: ${google.map((m) => `${m.name}（${m.status}）`).join("、")}`);
+    const n = (ev.tools ?? []).filter((t) => CONNECTORS.some((c) => t.startsWith(connectorToolPrefix(c)))).length;
+    log(`コネクタの道具: ${n} 個`);
+  },
   disallowedTools: "Read(**/.env*),Read(**/*.pem),Read(**/*.key),Bash,Edit,Write,NotebookEdit",
   mcpConfigFile: MCP_CONFIG_FILE,
   // 開発用フォルダ（アプリのコード）と、ディミの手引き（docs）を読めるようにする

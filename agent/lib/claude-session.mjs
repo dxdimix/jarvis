@@ -32,7 +32,8 @@ export function quoteForCmd(arg) {
 export class ClaudeSession {
   /**
    * @param {{ bin: string, model: string, tools: string, allowedTools: string, disallowedTools: string, addDirs: string[],
-   *   mcpConfigFile?: string, cwd: string, systemPromptFile: string, timeoutMs: number }} options
+   *   mcpConfigFile?: string, useConnectors?: boolean, onInit?: (ev: any) => void,
+   *   cwd: string, systemPromptFile: string, timeoutMs: number }} options
    */
   constructor(options) {
     this.options = options;
@@ -47,7 +48,8 @@ export class ClaudeSession {
   }
 
   start() {
-    const { bin, model, tools, allowedTools, disallowedTools, addDirs = [], mcpConfigFile, cwd, systemPromptFile } = this.options;
+    const { bin, model, tools, allowedTools, disallowedTools, addDirs = [], mcpConfigFile, useConnectors, cwd, systemPromptFile } =
+      this.options;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -61,7 +63,8 @@ export class ClaudeSession {
       ...addDirs.flatMap((d) => ["--add-dir", d]),
       "--append-system-prompt-file", systemPromptFile,
       "--no-session-persistence",
-      "--strict-mcp-config",
+      // useConnectors: claude.ai のコネクタ（Google Drive など）も読み込む。使ってよい道具は allowedTools で絞る
+      ...(useConnectors ? [] : ["--strict-mcp-config"]),
       ...(mcpConfigFile ? ["--mcp-config", mcpConfigFile] : []),
     ];
     const win = process.platform === "win32";
@@ -152,6 +155,8 @@ export class ClaudeSession {
     } catch {
       return;
     }
+    // 起動の知らせ（使える道具と MCP サーバーの一覧が入っている）
+    if (ev.type === "system" && ev.subtype === "init") this.options.onInit?.(ev);
     const p = this.pending;
     if (!p) return;
 
@@ -182,4 +187,12 @@ export class ClaudeSession {
     this.pending = null;
     p.reject(new Error(message));
   }
+}
+
+/**
+ * claude.ai のコネクタの名前（claude mcp list に出る名前。例: "claude.ai Google Drive"）から、
+ * Claude Code の道具の名前の頭（例: "mcp__claude_ai_Google_Drive"）を作る。許可のルールに使う。
+ */
+export function connectorToolPrefix(name) {
+  return "mcp__" + name.replace(/[^a-zA-Z0-9_-]/g, "_");
 }

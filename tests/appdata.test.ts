@@ -78,3 +78,11 @@ describe("quoteForCmd（Windows で Claude Code に渡す引数）", () => {
     expect(quoteForCmd("")).toBe('""');
   });
 });
+
+describe("connectorToolPrefix", () => {
+  it("claude.ai のコネクタの名前から、道具の名前の頭を作る", async () => {
+    const { connectorToolPrefix } = await import("../agent/lib/claude-session.mjs");
+    expect(connectorToolPrefix("claude.ai Google Drive")).toBe("mcp__claude_ai_Google_Drive");
+    expect(connectorToolPrefix("claude.ai Gmail")).toBe("mcp__claude_ai_Gmail");
+  });
+});
