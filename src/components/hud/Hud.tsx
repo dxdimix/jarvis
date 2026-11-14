@@ -16,6 +16,7 @@ import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
+import { matchBookmark, type Bookmark } from "@/lib/bookmarks";
 import { AppDock, AppWindows, useAppWindows } from "./AppWindows";
 import { Ring, type RingMode, type RingTone } from "./Ring";
 import { DataField } from "./DataField";
@@ -25,6 +26,7 @@ import {
   ExpandIcon,
   GearIcon,
   MemoryIcon,
+  BookmarkIcon,
   MicIcon,
   PcIcon,
   ShrinkIcon,
@@ -89,7 +91,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const online = useAgentOnline(supabase);
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [panel, setPanel] = useState<"none" | "chat" | "settings">("none");
+  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks">("none");
+  // Chrome のブックマーク（PC のディミが写したもの）。表がまだないときは空のまま
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const bookmarksRef = useRef<Bookmark[]>([]);
+  const [bookmarkQuery, setBookmarkQuery] = useState("");
+  // ブラウザに別タブを止められたときに、押して開くためのリンク
+  const [pendingLink, setPendingLink] = useState<Bookmark | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
   const [place, setPlace] = useState<Place | null>(null);
@@ -145,6 +153,23 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     };
   }, [supabase]);
 
+  // ブックマークを読む（開いたときと、一覧を開いたとき）
+  const loadBookmarks = useCallback(() => {
+    supabase
+      .from("bookmarks")
+      .select("title, url, folder")
+      .order("sort")
+      .limit(3000)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        bookmarksRef.current = data as Bookmark[];
+        setBookmarks(data as Bookmark[]);
+      });
+  }, [supabase]);
+  useEffect(() => {
+    loadBookmarks();
+  }, [loadBookmarks]);
+
   const speaker = useSpeaker(() => setCaptionUntil(Date.now() + CAPTION_MS), load(VOICE_KEY));
   const { speak, cancel: cancelSpeech } = speaker;
 
@@ -168,6 +193,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         const app = detectOpenCommand(text);
         if (app) {
           announce(openApp(app.id) ? `${app.name}を開きます` : `ブラウザに止められました。左のアイコンから${app.name}を開いてください`);
+          return;
+        }
+        // アプリの一覧になければ、Chrome のブックマークから探して、別のタブで開く
+        const bm = matchBookmark(text, bookmarksRef.current);
+        if (bm) {
+          const opened = window.open(bm.url, "_blank") !== null;
+          if (opened) announce(`${bm.title}を開きます`);
+          else {
+            setPendingLink(bm);
+            announce(`${bm.title}は、下のボタンを押すと開きます`);
+          }
           return;
         }
         const { error } = await supabase.from("messages").insert({ role: "user", content: text });
@@ -313,6 +349,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         <button onClick={() => setPanel(panel === "chat" ? "none" : "chat")} className={iconBtn} title="会話の履歴と文字入力" aria-label="会話の履歴と文字入力">
           <ChatIcon className="h-5 w-5" />
         </button>
+        <button
+          onClick={() => {
+            if (panel !== "bookmarks") loadBookmarks();
+            setPanel(panel === "bookmarks" ? "none" : "bookmarks");
+          }}
+          className={iconBtn}
+          title="ブックマーク"
+          aria-label="ブックマーク"
+        >
+          <BookmarkIcon className="h-5 w-5" />
+        </button>
         <Link href="/memory" className={iconBtn} title="覚えていること" aria-label="覚えていること">
           <MemoryIcon className="h-5 w-5" />
         </Link>
@@ -366,8 +413,59 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             <ChatIcon className="h-5 w-5" />
           </button>
         )}
+        {pendingLink && (
+          <button
+            onClick={() => {
+              window.open(pendingLink.url, "_blank", "noopener");
+              setPendingLink(null);
+            }}
+            className="mt-3 flex items-center gap-2 rounded-full border border-cyan-300/60 bg-cyan-500/10 px-4 py-1.5 text-sm text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.35)]"
+          >
+            <BookmarkIcon className="h-4 w-4" />
+            {pendingLink.title}
+          </button>
+        )}
         {(error || recognition.error) && <p className="mt-2 text-xs text-rose-300">{error || recognition.error}</p>}
       </div>
+
+      {/* ブックマークの一覧（Chrome のブックマーク。押すと別のタブで開く） */}
+      {panel === "bookmarks" && (
+        <div className="absolute right-5 top-20 z-[950] flex max-h-[70vh] w-96 max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border border-cyan-400/30 bg-slate-950/90 p-3 text-sm backdrop-blur">
+          <div className="mb-2 flex items-center gap-2">
+            <input
+              autoFocus
+              value={bookmarkQuery}
+              onChange={(e) => setBookmarkQuery(e.target.value)}
+              placeholder="ブックマークを探す"
+              className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
+            />
+            <button onClick={() => setPanel("none")} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
+              <CloseIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <ul className="min-h-0 flex-1 overflow-y-auto">
+            {bookmarks.length === 0 && (
+              <li className="px-2 py-3 text-xs text-slate-400">まだありません。デスクトップ PC のディミが、Chrome のブックマークを写すと表示されます。</li>
+            )}
+            {bookmarks
+              .filter((b) => !bookmarkQuery || (b.title + b.folder + b.url).toLowerCase().includes(bookmarkQuery.toLowerCase()))
+              .slice(0, 300)
+              .map((b, i) => (
+                <li key={i}>
+                  <a
+                    href={b.url}
+                    target="_blank"
+                    rel="noopener"
+                    className="block rounded px-2 py-1.5 hover:bg-cyan-400/10"
+                  >
+                    <div className="truncate text-cyan-100">{b.title}</div>
+                    <div className="truncate text-[10px] text-slate-500">{b.folder}</div>
+                  </a>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {/* 設定（天気の地域と声） */}
       {panel === "settings" && (

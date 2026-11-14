@@ -16,6 +16,7 @@ import { acquireSingleInstance } from "./lib/single-instance.mjs";
 import { PERSONA, buildFirstTurn, buildMemoryBlock, formatTurn } from "./lib/prompt.mjs";
 import { startAutoUpdate } from "./lib/updater.mjs";
 import { aliasLegacyEnv } from "./lib/env.mjs";
+import { startBookmarkSync } from "./lib/bookmarks.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
@@ -288,8 +289,12 @@ setInterval(() => {
 try {
   const { data, error } = await supabase.auth.admin.listUsers({ perPage: 2 });
   if (error) throw error;
-  if (data.users.length === 1) process.env.DIMY_OWNER_ID = data.users[0].id;
-  else log(`利用者が ${data.users.length} 人いるため、「覚える」道具は使いません。`);
+  if (data.users.length === 1) {
+    const owner = data.users[0];
+    process.env.DIMY_OWNER_ID = owner.id;
+    // Chrome のブックマークを写す（利用者のメールアドレスでログインしている Chrome のプロフィールから）
+    if (owner.email && process.env.DIMY_BOOKMARKS !== "off") startBookmarkSync({ supabase, userId: owner.id, email: owner.email, log });
+  } else log(`利用者が ${data.users.length} 人いるため、「覚える」道具は使いません。`);
 } catch (e) {
   log(`利用者を確かめられませんでした（${e.message ?? e}）。「覚える」道具は使いません。`);
 }

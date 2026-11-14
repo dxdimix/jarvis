@@ -28,6 +28,13 @@ export const ChatIcon = ({ className }: P) => (
 );
 export const MemoryIcon = ({ className }: P) => (
   <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+    <rect x="9.5" y="9.5" width="5" height="5" rx="0.5" />
+    <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
+  </svg>
+);
+export const BookmarkIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
     <path d="M6 3h12v18l-6-4-6 4z" />
     <path d="M12 7l1 2.2 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" />
   </svg>
