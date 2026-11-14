@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rowsToText, stamp } from "../src/components/hud/AdminPanel";
+import { rowsToText, stamp } from "../src/lib/logs";
 
 describe("管理の画面のコピー", () => {
   it("日本時間の日時を付けて、1 行 1 件にする（本文の改行は字下げ）", () => {

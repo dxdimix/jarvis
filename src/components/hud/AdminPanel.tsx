@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ACTIVITY_LABEL } from "@/lib/activity";
+import { rowsToText, stamp, type LogRow as Row } from "@/lib/logs";
 import { CloseIcon, ReloadIcon } from "./Icons";
 
 type Tab = "chat" | "system" | "activity";
@@ -18,18 +19,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "activity", label: "動作" },
 ];
 
-/** 1 行の記録（表示とコピーに使う） */
-type Row = { id: string; at: string; kind: string; text: string; bad?: boolean };
-
-/** 日時を「2026-11-14 21:05:33」の形にする（日本時間） */
-export function stamp(iso: string) {
-  return new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Tokyo" });
-}
-
-/** コピーする文（1 行 1 件。本文の改行は字下げして続ける） */
-export function rowsToText(rows: Row[]) {
-  return rows.map((r) => `[${stamp(r.at)}] ${r.kind}: ${r.text.replace(/\n/g, "\n    ")}`).join("\n");
-}
 
 const MISSING = /relation|does not exist|schema cache|Could not find/i;
 
