@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Message } from "@/lib/types";
 import { FeedbackBar, type Feedback } from "@/components/FeedbackBar";
+import { MicIcon, StopIcon } from "@/components/hud/Icons";
 import { takeSpeakable } from "@/lib/speech";
 import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
@@ -442,7 +443,7 @@ export function Chat({
                 : "bg-slate-700 hover:bg-slate-600")
             }
           >
-            {recognition.listening ? "■" : "🎤"}
+            {recognition.listening ? <StopIcon className="h-5 w-5" /> : <MicIcon className="h-5 w-5" />}
           </button>
         )}
         <button className="rounded bg-cyan-600 px-4 py-2 font-medium text-white hover:bg-cyan-500">

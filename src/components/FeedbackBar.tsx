@@ -38,7 +38,11 @@ export function FeedbackBar({
     setEditing(false);
   }
 
-  const btn = "rounded px-1.5 py-0.5 text-xs hover:bg-slate-700";
+  // 文字だけのボタン（水色の英字。押したものだけ明るく光る）
+  const btn =
+    "rounded border px-2 py-0.5 font-mono text-[10px] tracking-[0.2em] transition hover:border-cyan-300/70 hover:text-cyan-100";
+  const on = " border-cyan-300/80 bg-cyan-400/10 text-cyan-100 shadow-[0_0_10px_rgba(34,211,238,0.45)]";
+  const off = " border-cyan-400/25 text-cyan-400/70";
   return (
     <div className="mt-1 text-xs text-slate-400">
       <div className="flex items-center gap-1">
@@ -46,9 +50,9 @@ export function FeedbackBar({
           aria-label="よい返事"
           aria-pressed={value?.rating === 1}
           onClick={() => (value?.rating === 1 ? clear() : save(1, value?.comment ?? null))}
-          className={btn + (value?.rating === 1 ? " text-emerald-300" : "")}
+          className={btn + (value?.rating === 1 ? on : off)}
         >
-          👍
+          GOOD
         </button>
         <button
           aria-label="よくない返事"
@@ -58,12 +62,12 @@ export function FeedbackBar({
             save(-1, value?.comment ?? null);
             setEditing(true);
           }}
-          className={btn + (value?.rating === -1 ? " text-rose-300" : "")}
+          className={btn + (value?.rating === -1 ? on : off)}
         >
-          👎
+          BAD
         </button>
         {value && !editing && (
-          <button onClick={() => setEditing(true)} className="underline">
+          <button onClick={() => setEditing(true)} className="ml-1 text-cyan-400/70 underline hover:text-cyan-200">
             {value.comment ? `「${value.comment}」` : "ひとこと添える"}
           </button>
         )}

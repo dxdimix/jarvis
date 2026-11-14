@@ -133,12 +133,12 @@ export function Memory({ supabase }: { supabase: SupabaseClient }) {
       </ul>
 
       <h2 className="mb-2 mt-10 text-sm font-semibold tracking-widest text-cyan-400">最近の評価</h2>
-      <p className="mb-3 text-xs text-slate-500">チャットの返事の下の 👍 👎 で付けたもの。最新の 10 件を、キーミスが次の会話で参考にします。</p>
+      <p className="mb-3 text-xs text-slate-500">会話の返事の下の GOOD / BAD で付けたもの。最新の 10 件を、キーミスが次の会話で参考にします。</p>
       <ul className="space-y-2 text-sm">
         {feedback.length === 0 && <li className="text-slate-500">まだありません。</li>}
         {feedback.map((f) => (
           <li key={f.id} className="rounded border border-slate-800 px-3 py-2">
-            <span className={f.rating > 0 ? "text-emerald-300" : "text-rose-300"}>{f.rating > 0 ? "👍 よい" : "👎 よくない"}</span>
+            <span className="font-mono text-xs tracking-[0.2em] text-cyan-300">{f.rating > 0 ? "GOOD" : "BAD"}</span>
             {f.comment && <span className="ml-2">「{f.comment}」</span>}
             <div className="mt-1 line-clamp-2 text-xs text-slate-500">{f.messages?.content}</div>
           </li>
