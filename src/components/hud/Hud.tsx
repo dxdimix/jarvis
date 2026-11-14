@@ -71,6 +71,7 @@ const VOICE_KEY = "dimy.voice";
 const RATE_KEY = "dimy.rate"; // 話す速さ
 const PITCH_KEY = "dimy.pitch"; // 声の高さ
 const VOLUME_KEY = "dimy.volume"; // ディミの声の大きさ（PC 全体の音量とは別）
+const OPEN_ON_KEY = "dimy.openOn"; // ディミの外で開く場所（"pc": DIMY が動いている PC の Chrome / "here": この端末のブラウザ）
 const SITE_ACCOUNTS_KEY = "dimy.siteAccounts"; // サイトごとに開く Chrome のプロフィール（{ サイト名: プロフィールのフォルダ名 }。"*" は指定がないとき）
 const SILENCE_KEY = "dimy.silenceSec"; // 話し終わりとみなすまでの無音の時間（秒）
 const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
@@ -448,6 +449,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const [pcState, setPcState] = useState<PcState | null>(null);
   // サイトごとのアカウント（設定の「アカウント」タブで決める。決めていなければマスターアカウント）
   const [siteAccounts, setSiteAccounts] = useState<Record<string, string>>({});
+  // 開く場所（端末ごと）。スマホは最初から「この端末」、それ以外は「PC の Chrome」
+  const [openOn, setOpenOnRaw] = useState<"pc" | "here">("pc");
+  useEffect(() => {
+    const v = load(OPEN_ON_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenOnRaw(v === "here" || v === "pc" ? v : window.matchMedia("(pointer: coarse)").matches ? "here" : "pc");
+  }, []);
+  const setOpenOn = (v: "pc" | "here") => {
+    setOpenOnRaw(v);
+    save(OPEN_ON_KEY, v);
+  };
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -498,12 +510,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       : profile
         ? (nicknames[profile] ?? pcState?.chrome_profiles.find((p) => p.dir === profile)?.name ?? profile)
         : "マスターアカウント";
-    logActivity(supabase, "open_chrome", `${title} ${url}（${who}）`);
-    if (online) {
+    logActivity(supabase, "open_chrome", `${title} ${url}（${openOn === "here" ? "この端末のブラウザ" : who}）`);
+    if (online && openOn === "pc") {
       announce(`${title}を開きます`);
-      const r = await sendPcCommand(supabase, "open_url", { url, ...(account ? { account } : profile ? { profile } : {}) });
+      const r = await sendPcCommand(supabase, "open_url", { url, ...(account ? { account } : profile ? { profile } : {}) }, 15_000);
       if (r.ok) return;
-      if (r.sent) return announce(r.result || "PC で開けませんでした");
+      if (r.sent) {
+        // PC から返事がない・開けなかった: このブラウザで開くボタンを出す
+        logActivity(supabase, "error", `PC で開けませんでした: ${r.result}`);
+        setPendingLink({ title, url, folder: "" });
+        return announce(`${r.result || "PC で開けませんでした"} 下のボタンを押すと、この端末で開きます`);
+      }
       // 表がまだないなど、PC に送れなかったときは、このブラウザで開く
     }
     if (window.open(url, "_blank") === null) {
@@ -968,6 +985,8 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           setWakeOn={changeWake}
           profiles={pcState?.chrome_profiles ?? null}
           masterEmail={session.user.email ?? ""}
+          openOn={openOn}
+          setOpenOn={setOpenOn}
           siteAccounts={siteAccounts}
           setSiteAccount={setSiteAccount}
           onRefreshProfiles={refreshPcState}

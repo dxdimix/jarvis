@@ -53,6 +53,8 @@ export type SettingsProps = {
   // アカウント
   profiles: ChromeProfile[] | null;
   masterEmail: string;
+  openOn: "pc" | "here";
+  setOpenOn: (v: "pc" | "here") => void;
   siteAccounts: Record<string, string>;
   setSiteAccount: (site: string, dir: string | null) => void;
   onRefreshProfiles: () => void;
@@ -306,6 +308,26 @@ function AccountTab(p: SettingsProps) {
         アカウントを言わなかったときは、ここで決めたアカウントで開きます。決めていなければ<span className="text-cyan-200">マスターアカウント</span>
         {master ? `（${master.name}・${master.email}）` : ""}で開きます。
       </p>
+      <div>
+        <div className="mb-1.5 text-cyan-100">この端末で頼んだときに開く場所</div>
+        <div className="space-y-1 text-xs">
+          <label className="flex cursor-pointer items-start gap-2">
+            <input type="radio" name="dimy-open-on" checked={p.openOn === "pc"} onChange={() => p.setOpenOn("pc")} className="mt-0.5 accent-cyan-400" />
+            <span>
+              <span className="text-cyan-100">DIMY が動いているデスクトップ PC の Chrome</span>
+              <span className="block text-slate-400">下のアカウントの設定どおりに開きます。デスクトップ PC で使うとき向け。</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input type="radio" name="dimy-open-on" checked={p.openOn === "here"} onChange={() => p.setOpenOn("here")} className="mt-0.5 accent-cyan-400" />
+            <span>
+              <span className="text-cyan-100">この端末のブラウザ</span>
+              <span className="block text-slate-400">ノートやスマホで使うとき向け。今このブラウザでログインしているアカウントで開きます（下のアカウントの設定は使いません）。</span>
+            </span>
+          </label>
+        </div>
+        <p className="mt-1 text-xs text-slate-400">この設定は端末ごとです。ノートでは「この端末のブラウザ」を選んでください。</p>
+      </div>
       {p.profiles === null ? (
         <p className="text-slate-400">PC の情報がまだ届いていません（PC の DIMY が動いていれば、数分で出ます）。</p>
       ) : (

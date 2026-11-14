@@ -410,19 +410,40 @@ function startPcCommands(ownerId) {
     const { data, error } = await supabase.from("pc_commands").select("*").eq("status", "pending").order("created_at");
     if (!error) for (const c of data) await exec(c);
   }
-  // つながらなくても（表がまだないなど）つなぎ直しはしない（発言の通知まで止めないため）
+  // 通知（Realtime）で受け取る。つながらない・切れたときは 30 秒後にこのチャンネルだけ作り直す
+  // （通信の土台ごとは作り直さない。発言の通知まで止めないため）
   let warned = false;
-  supabase
-    .channel("dimy-pc")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pc_commands" }, (p) => exec(p.new))
-    .subscribe((status) => {
-      if (status === "SUBSCRIBED") backlog();
-      if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !warned) {
-        warned = true;
-        log("画面からの命令（Chrome で開くなど）を受け取れません。データベースの更新がまだかもしれません。");
-      }
-    });
-  setInterval(backlog, 30_000).unref();
+  let retryTimer = null;
+  function subscribe() {
+    const ch = supabase
+      .channel("dimy-pc")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pc_commands" }, (p) => exec(p.new))
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (warned) log("画面からの命令を受け取れるようになりました。");
+          warned = false;
+          backlog();
+        }
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") && !retryTimer) {
+          if (!warned) log("画面からの命令（Chrome で開くなど）の通知を受け取れません。30 秒後につなぎ直します（その間も 5 秒ごとに確かめます）。");
+          warned = true;
+          retryTimer = setTimeout(async () => {
+            retryTimer = null;
+            await supabase.removeChannel(ch).catch(() => {});
+            subscribe();
+          }, 30_000);
+        }
+      });
+  }
+  subscribe();
+  // 通知を取りこぼしても遅れないよう、5 秒ごとにも返事待ちの命令を確かめる
+  let busy = false;
+  setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    await backlog().catch(() => {});
+    busy = false;
+  }, 5_000).unref();
 }
 
 // デスクトップのショートカットを今の決まり（「ディミを再起動」1 つ）に合わせる
