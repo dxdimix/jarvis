@@ -56,7 +56,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 - パレット `/palette?n=<モニター番号>`: 固定ウィンドウだけを並べる画面。メイン画面の右上のボタンからモニターを選んで開く（getScreenDetails。初回は「ウィンドウの管理」の許可）。
 - メイン画面の計器（`HudChrome.tsx`）: 四隅の枠、時刻の目盛り、球体の周りの角度のリングと走査線、右の SYSTEM（PC との接続・返事までの時間・今日の会話数・固定ウィンドウの数・状態）と LOG。SVG の座標は丸める（サーバーとブラウザで小数の端が変わると表示が食い違うため）。
 - 声の大きさ（設定の音声のタブ）: 読み上げの volume。PC 全体の音量とは別（PC の音量より大きくはできない）。
-- カレンダー（左下の日時を押す。`CalendarPanel.tsx`）: Google カレンダー（マスターアカウント）と Google Calendar API でつなぐ（利用者が Google Cloud で作った OAuth の鍵。`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` を Vercel と PC の .env.local に置く。これは Supabase の secret キーではないので Vercel に置いてよい）。「Google カレンダーとつなぐ」（`/api/google/login` → `/api/google/callback`）で更新用の鍵を表 `google_tokens`（本人だけ読み書きできる RLS）に保存。予定は `/api/google/events`（GET で表示しているカレンダーすべて、POST で追加）。共通の中身は `agent/lib/gcal.mjs`。開いている間は 2 分ごとに読み直す。
+- カレンダー（左下の日時を押す。`CalendarPanel.tsx`）: Google カレンダー（マスターアカウント）と Google Calendar API でつなぐ（利用者が Google Cloud で作った OAuth の鍵。`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` を Vercel と PC の .env.local に置く。これは Supabase の secret キーではないので Vercel に置いてよい）。「Google カレンダーとつなぐ」（`/api/google/login` → `/api/google/callback`）で更新用の鍵を表 `google_tokens`（本人だけ読み書きできる RLS）に保存。予定は `/api/google/events`（GET で表示しているカレンダーすべて、POST で追加）。共通の中身は `agent/lib/gcal.mjs`。開いている間は 2 分ごとに読み直す。祝日のカレンダー（id に `#holiday@`）は予定として出さず、日付を赤くして名前を添える。右上に Google カレンダーと、その設定を開くリンク（`authuser` でマスターアカウント）。
   - DIMY が登録する予定は、Google カレンダーの中の「DIMY」という別のカレンダーに入れる（なければ作る。説明の最後に「DIMY から登録」）。声で頼まれたときも、MCP の `calendar_add`（`agent/tools/calendar.mjs`）でここに入れる。読むのは `calendar_events`。
 - 開いた小さな画面（カレンダー・天気・ブックマーク・固定ウィンドウを足す・パレット）は、外をクリック・Esc で閉じる（`src/hooks/useDismiss.ts`。開くボタンには `data-panel-toggle` を付ける）。
 - 天気の詳細（右下の天気を押す。`WeatherPanel.tsx`）: Open-Meteo の 1 時間ごと（これから 36 時間）と日ごと（おととい〜7 日後）。

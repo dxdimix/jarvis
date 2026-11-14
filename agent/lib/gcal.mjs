@@ -82,7 +82,7 @@ export async function ensureDimyCalendar(tok, knownId) {
 
 /**
  * 予定の一覧（表示しているカレンダーすべて。from〜to は ISO の日時）。
- * @returns {Promise<{ id: string, calendarId: string, calendar: string, color: string, title: string, start: string, end: string, allDay: boolean, location: string, dimy: boolean, link: string }[]>}
+ * @returns {Promise<{ id: string, calendarId: string, calendar: string, color: string, title: string, start: string, end: string, allDay: boolean, location: string, dimy: boolean, holiday: boolean, link: string }[]>}
  */
 export async function listEvents(tok, { from, to }) {
   const cals = (await listCalendars(tok)).filter((c) => c.selected !== false || c.primary || c.summary === DIMY_CALENDAR);
@@ -104,6 +104,8 @@ export async function listEvents(tok, { from, to }) {
             allDay: Boolean(e.start?.date),
             location: e.location || "",
             dimy: c.summary === DIMY_CALENDAR,
+            // 祝日のカレンダー（「日本の祝日」など）。画面では予定の一覧に出さず、日付を赤くする
+            holiday: String(c.id).includes("#holiday@"),
             link: e.htmlLink || "",
           }));
       } catch {

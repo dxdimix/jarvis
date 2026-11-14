@@ -10,7 +10,7 @@ import type { Session } from "@supabase/supabase-js";
 import { CloseIcon, ExternalIcon } from "./Icons";
 import { useDismiss } from "@/hooks/useDismiss";
 
-type Ev = { id: string; calendar: string; color: string; title: string; start: string; end: string; allDay: boolean; location: string; dimy: boolean; link: string };
+type Ev = { id: string; calendar: string; color: string; title: string; start: string; end: string; allDay: boolean; location: string; dimy: boolean; holiday?: boolean; link: string };
 type State = { configured: boolean; connected: boolean; email?: string; events?: Ev[]; error?: string };
 
 const TZ = "Asia/Tokyo";
@@ -81,7 +81,16 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
     return () => clearInterval(t);
   }, [load]);
 
-  const events = useMemo(() => state?.events ?? [], [state]);
+  // 祝日は予定として出さず、日付を赤くして名前を添える
+  const all = useMemo(() => state?.events ?? [], [state]);
+  const events = useMemo(() => all.filter((e) => !e.holiday), [all]);
+  const holidays = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of all) if (e.holiday) for (const d of eventDays(e)) m.set(d, e.title);
+    return m;
+  }, [all]);
+  // Google カレンダー（マスターアカウントで開く）
+  const gcalUrl = (path: string) => `https://calendar.google.com/calendar/u/0/r${path}${state?.email ? `?authuser=${encodeURIComponent(state.email)}` : ""}`;
   const byDay = useMemo(() => {
     const m = new Map<string, Ev[]>();
     for (const e of events) for (const d of eventDays(e)) m.set(d, [...(m.get(d) ?? []), e]);
@@ -115,9 +124,29 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
           <span className="font-mono text-xs tracking-[0.3em] text-cyan-300">CALENDAR</span>
           {state?.email && <span className="ml-3 truncate text-xs text-slate-400">{state.email}</span>}
         </div>
-        <button onClick={onClose} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
-          <CloseIcon className="h-5 w-5" />
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          {state?.connected && (
+            <>
+              <a href={gcalUrl("")} target="_blank" rel="noopener" title="Google カレンダーを開く" className="flex items-center gap-1 text-xs text-cyan-300 hover:text-cyan-100">
+                <ExternalIcon className="h-3.5 w-3.5" />
+                開く
+              </a>
+              <a
+                href={gcalUrl("/settings")}
+                target="_blank"
+                rel="noopener"
+                title="Google カレンダーの設定を開く（表示するカレンダーや祝日の設定など）"
+                className="flex items-center gap-1 text-xs text-cyan-300 hover:text-cyan-100"
+              >
+                <ExternalIcon className="h-3.5 w-3.5" />
+                設定
+              </a>
+            </>
+          )}
+          <button onClick={onClose} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
+            <CloseIcon className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* 月のカレンダー */}
@@ -141,15 +170,17 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
         {cells.map((d, i) => {
           const inMonth = d.startsWith(month);
           const evs = byDay.get(d) ?? [];
+          const holiday = holidays.get(d);
           return (
             <button
               key={d}
               onClick={() => setSelected(d)}
+              title={holiday}
               className={
                 "relative h-9 rounded transition " +
                 (d === selected ? "bg-cyan-400/20 text-cyan-50 " : "hover:bg-cyan-400/10 ") +
                 (d === today ? "ring-1 ring-cyan-300/80 " : "") +
-                (inMonth ? (i % 7 === 0 ? "text-rose-200" : i % 7 === 6 ? "text-sky-200" : "text-cyan-100") : "text-slate-600")
+                (inMonth ? (i % 7 === 0 || holiday ? "text-rose-200" : i % 7 === 6 ? "text-sky-200" : "text-cyan-100") : "text-slate-600")
               }
             >
               {Number(d.slice(8))}
@@ -183,7 +214,10 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
           <>
             {state.error && <p className="mb-2 text-xs text-rose-300">{state.error}</p>}
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs text-cyan-300">{selLabel}</span>
+              <span className="text-xs text-cyan-300">
+                {selLabel}
+                {holidays.get(selected) && <span className="ml-2 text-rose-300">{holidays.get(selected)}</span>}
+              </span>
               <button onClick={() => setAdding(!adding)} className="rounded border border-cyan-500/40 px-2 py-0.5 text-xs text-cyan-200 hover:bg-cyan-400/10">
                 ＋ 予定を足す
               </button>
