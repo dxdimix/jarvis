@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Message } from "@/lib/types";
+import { FeedbackBar, type Feedback } from "@/components/FeedbackBar";
 import { takeSpeakable } from "@/lib/speech";
 import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
@@ -27,6 +29,9 @@ function saveSetting(key: string, value: string) {
 
 export function Chat({ supabase, session }: { supabase: SupabaseClient; session: Session }) {
   const [messages, setMessages] = useState<Message[]>([]);
+  // 返事への評価（message_id → 評価）。表がまだない場合は、評価のボタンを出さない
+  const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
+  const [feedbackReady, setFeedbackReady] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [speakOn, setSpeakOn] = useState(() => loadSetting("speak", "on") === "on");
@@ -80,6 +85,16 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
         if (cancelled) return;
         if (error) setError(`履歴を読み込めませんでした: ${error.message}`);
         else setMessages((data as Message[]).reverse());
+      });
+    supabase
+      .from("feedback")
+      .select("message_id, rating, comment")
+      .order("created_at", { ascending: false })
+      .limit(300)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        setFeedback(Object.fromEntries((data ?? []).map((f) => [f.message_id, { rating: f.rating, comment: f.comment }])));
+        setFeedbackReady(true);
       });
 
     // PC 常駐プログラムが返事を書き込んだり、状態を変えたりしたら、すぐ画面に反映する。
@@ -182,6 +197,12 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-400">
           <span className="hidden sm:inline">{session.user.email}</span>
+          <Link href="/hud" className="underline hover:text-slate-200">
+            全画面表示
+          </Link>
+          <Link href="/memory" className="underline hover:text-slate-200">
+            覚えていること
+          </Link>
           <button onClick={() => supabase.auth.signOut()} className="underline hover:text-slate-200">
             ログアウト
           </button>
@@ -252,6 +273,21 @@ export function Chat({ supabase, session }: { supabase: SupabaseClient; session:
                 <div className="mt-1 text-xs text-cyan-200">考えています…</div>
               )}
               {m.status === "error" && <div className="mt-1 text-xs text-red-300">エラー: {m.error}</div>}
+              {feedbackReady && m.role === "assistant" && m.status === "done" && (
+                <FeedbackBar
+                  supabase={supabase}
+                  messageId={m.id}
+                  value={feedback[m.id]}
+                  onChange={(f) =>
+                    setFeedback((prev) => {
+                      const next = { ...prev };
+                      if (f) next[m.id] = f;
+                      else delete next[m.id];
+                      return next;
+                    })
+                  }
+                />
+              )}
             </div>
           </div>
         ))}

@@ -37,3 +37,21 @@ describe("buildFirstTurn", () => {
     expect(p).not.toContain("古い発言");
   });
 });
+
+describe("buildMemoryBlock", () => {
+  it("覚えていることと評価を、会話の最初に渡す文にする", async () => {
+    const { buildMemoryBlock } = await import("../agent/lib/prompt.mjs");
+    const block = buildMemoryBlock(
+      [{ kind: "style", content: "結論を先に" }],
+      [{ rating: -1, comment: "長い", reply: "FX の状況は" }],
+    );
+    expect(block).toContain("・[話し方の好み] 結論を先に");
+    expect(block).toContain("・よくない「長い」（返事: FX の状況は）");
+    expect(buildMemoryBlock([], [])).toBe("");
+  });
+
+  it("覚えていることを、最初の発言の前に入れる", () => {
+    const p = buildFirstTurn([], "こんにちは", { now, memory: "（覚えていること）" });
+    expect(p.startsWith("（覚えていること）\n\n")).toBe(true);
+  });
+});

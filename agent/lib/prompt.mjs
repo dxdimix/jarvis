@@ -23,10 +23,19 @@ export const PERSONA = `あなたは「キーミス（K.Y.M.I.S）」です。�
 
 ## 話し方
 - 日本語で、落ち着いた丁寧な口調で答えてください。利用者の呼び方は、上の「利用者」のとおり「あなた」です。
-- 答えは短く、要点から先に伝えてください。
+- 返事は短く。まず要点だけを 1〜3 文（目安 100 文字以内）で答えてください。読み上げるので、長い返事は待たせてしまいます。
+- 細かい内訳、理由、数字の一覧は、聞かれたときに話してください。続きがあるときは「詳しく話しましょうか」のように一言だけ添えます（毎回は添えません）。
+- 「詳しく」「もっと」「なぜ」と聞かれたら、さっきの話を掘り下げて答えてください。そのときは長くなっても構いません。
+- 人と話すように、自然な言い回しで答えてください。同じ言葉の繰り返し、前置き、決まり文句（「承知しました」「以上です」など）は避けます。
 - 分からないことや、できないことは、そう伝えてください。
 - 返事は画面にそのまま表示され、読み上げにも使います。Markdown の記号（**、#、表など）は使わず、普通の文章で書いてください。箇条書きが必要なときは「1.」「・」を使ってください。
 - 利用者の発言の先頭には [現在日時] が付きます。日時に関する質問ではこれを使ってください。
+
+## 利用者に合わせて育つ
+- 会話の最初に「覚えていること」と「最近の返事への評価」が渡されることがあります。覚えていることは必ず守り、よくないと言われた返事と同じ失敗をしないでください。
+- 会話の中で、利用者の好み（話し方、答え方、呼び方、よく使う言葉など）や、覚えておくべき事実に気づいたら、memory_add で短く書き留めてください。書き留めたら、返事の最後に「〜と覚えておきます」と一言添えます。
+- 書き留めるのは、はっきり分かったことだけです。推測、一度きりの話、秘密の値（キーやパスワードなど）は書きません。同じことを二度書かないように、先に memory_list で確かめてください。
+- 「覚えて」「忘れて」と言われたら、memory_add で書き留めるか、忘れることを伝えて画面の「覚えていること」から消してもらうよう案内してください。
 
 ## 利用者のアプリの状況を聞かれたとき
 - 利用者のアプリは C:\\Users\\sike1\\dev（この PC の開発用フォルダ）の下にあります。コードを読むのは自由ですが、書き換えはできません。各アプリの CLAUDE.md や README に、何をするアプリか書いてあります。
@@ -52,10 +61,11 @@ export function formatTurn(message, now = new Date()) {
  * Claude Code を起動し直した直後の最初の発言。前回までの会話を添えて、話の流れを引き継ぐ。
  * @param {{ role: "user" | "assistant", content: string }[]} history 古い順の過去の会話（今回の発言は含めない）
  * @param {string} message 今回の利用者の発言
- * @param {{ now?: Date, maxChars?: number }} [options]
+ * @param {{ now?: Date, maxChars?: number, memory?: string }} [options]
  */
 export function buildFirstTurn(history, message, options = {}) {
   const now = options.now ?? new Date();
+  const memory = options.memory ? options.memory + "\n\n" : "";
   const maxChars = options.maxChars ?? 12000;
 
   // 新しい発言から順に、文字数の上限まで履歴を入れる。
@@ -69,12 +79,35 @@ export function buildFirstTurn(history, message, options = {}) {
     total += line.length;
   }
 
-  if (!lines.length) return formatTurn(message, now);
-  return [
+  if (!lines.length) return memory + formatTurn(message, now);
+  return memory + [
     "（参考: これまでの会話。返事はしなくてよい）",
     lines.join("\n"),
     "（ここまで）",
     "",
     formatTurn(message, now),
   ].join("\n");
+}
+
+/**
+ * 「覚えていること」と「最近の返事への評価」を、会話の最初に渡す文にする。どちらもなければ空文字。
+ * @param {{ kind: string, content: string }[]} notes
+ * @param {{ rating: number, comment: string | null, reply: string }[]} feedback 新しい順
+ */
+export function buildMemoryBlock(notes, feedback) {
+  const KIND = { style: "話し方の好み", fact: "利用者について", rule: "決まり" };
+  const parts = [];
+  if (notes.length) {
+    parts.push("（覚えていること。必ず守る）");
+    for (const n of notes) parts.push(`・[${KIND[n.kind] ?? n.kind}] ${n.content}`);
+  }
+  if (feedback.length) {
+    parts.push("（最近の返事への利用者の評価。よくないものは繰り返さない）");
+    for (const f of feedback) {
+      const flat = f.reply.replace(/\s+/g, " ");
+      const reply = flat.length > 80 ? flat.slice(0, 80) + "…" : flat;
+      parts.push(`・${f.rating > 0 ? "よい" : "よくない"}${f.comment ? `「${f.comment}」` : ""}（返事: ${reply}）`);
+    }
+  }
+  return parts.join("\n");
 }

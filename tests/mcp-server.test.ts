@@ -15,6 +15,8 @@ describe("キーミスの道具（MCP サーバー）", () => {
       "app_columns",
       "app_read",
       "app_count",
+      "memory_list",
+      "memory_add",
     ]);
   });
 
@@ -25,7 +27,7 @@ describe("キーミスの道具（MCP サーバー）", () => {
   it("app_read の引数を、読み取りのコマンドに直す", () => {
     const read = TOOLS.find((t) => t.name === "app_read")!;
     expect(
-      read.argv({ app: "fx", table: "jfx_runs", order: "started_at.desc", limit: 5, where: ["status=eq.error"] }),
+      read.argv!({ app: "fx", table: "jfx_runs", order: "started_at.desc", limit: 5, where: ["status=eq.error"] }),
     ).toEqual(["read", "fx", "jfx_runs", "--order", "started_at.desc", "--limit", "5", "--where", "status=eq.error"]);
   });
 

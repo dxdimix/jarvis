@@ -12,6 +12,8 @@ export function useSpeaker(onIdle: () => void, initialVoiceName: string | null =
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState<string | null>(initialVoiceName);
   const queued = useRef(0);
+  // 読み上げ中かどうか（画面の動きに使う）
+  const [speaking, setSpeaking] = useState(false);
   const onIdleRef = useRef(onIdle);
   useEffect(() => {
     onIdleRef.current = onIdle;
@@ -36,9 +38,13 @@ export function useSpeaker(onIdle: () => void, initialVoiceName: string | null =
       if (voice) u.voice = voice;
       u.rate = 1.1;
       queued.current++;
+      setSpeaking(true);
       const done = () => {
         queued.current = Math.max(0, queued.current - 1);
-        if (queued.current === 0) onIdleRef.current();
+        if (queued.current === 0) {
+          setSpeaking(false);
+          onIdleRef.current();
+        }
       };
       u.onend = done;
       u.onerror = done;
@@ -50,10 +56,11 @@ export function useSpeaker(onIdle: () => void, initialVoiceName: string | null =
   const cancel = useCallback(() => {
     if (!supported) return;
     queued.current = 0;
+    setSpeaking(false);
     window.speechSynthesis.cancel();
   }, [supported]);
 
   const isSpeaking = useCallback(() => queued.current > 0, []);
 
-  return { supported, speak, cancel, isSpeaking, japaneseVoices, voiceName: voice?.name ?? null, setVoiceName };
+  return { supported, speak, cancel, isSpeaking, speaking, japaneseVoices, voiceName: voice?.name ?? null, setVoiceName };
 }

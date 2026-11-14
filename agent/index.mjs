@@ -13,7 +13,7 @@ import { config as loadEnv } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { ClaudeSession } from "./lib/claude-session.mjs";
 import { acquireSingleInstance } from "./lib/single-instance.mjs";
-import { PERSONA, buildFirstTurn, formatTurn } from "./lib/prompt.mjs";
+import { PERSONA, buildFirstTurn, buildMemoryBlock, formatTurn } from "./lib/prompt.mjs";
 import { startAutoUpdate } from "./lib/updater.mjs";
 import { aliasLegacyEnv } from "./lib/env.mjs";
 
@@ -159,6 +159,32 @@ function createReplyWriter(message) {
   };
 }
 
+// 「覚えていること」と「最近の評価」（画面や会話で変わったら、次の発言で Claude Code を起動し直して反映する）
+let memoryChanged = false;
+async function loadMemory(userId) {
+  try {
+    const [notes, fb] = await Promise.all([
+      supabase.from("kymis_notes").select("kind, content").eq("user_id", userId).eq("active", true).order("created_at"),
+      supabase
+        .from("feedback")
+        .select("rating, comment, messages(content)")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ]);
+    if (notes.error) throw notes.error;
+    if (fb.error) throw fb.error;
+    return buildMemoryBlock(
+      notes.data,
+      fb.data.map((f) => ({ rating: f.rating, comment: f.comment, reply: f.messages?.content ?? "" })),
+    );
+  } catch (e) {
+    // 表がまだない（データベースの更新前）などのときは、覚えていることなしで続ける
+    log(`覚えていることを読めませんでした（${e.message ?? e}）。なしで続けます。`);
+    return "";
+  }
+}
+
 async function handle(message) {
   // 他の常駐プログラムと取り合わないよう、pending → processing に変えられたときだけ処理する。
   const { data: claimed, error: claimError } = await supabase
@@ -179,6 +205,10 @@ async function handle(message) {
       log("会話が長くなったので、Claude Code を起動し直します。");
       claude.stop();
     }
+    if (claude.alive && claude.turns > 0 && memoryChanged) {
+      log("覚えていることか評価が変わったので、Claude Code を起動し直して反映します。");
+      claude.stop();
+    }
 
     let prompt;
     if (claude.alive && claude.turns > 0) {
@@ -194,7 +224,8 @@ async function handle(message) {
         .order("created_at", { ascending: false })
         .limit(HISTORY_COUNT);
       if (error) throw error;
-      prompt = buildFirstTurn(history.reverse(), claimed.content);
+      memoryChanged = false;
+      prompt = buildFirstTurn(history.reverse(), claimed.content, { memory: await loadMemory(claimed.user_id) });
     }
 
     let firstAt = 0;
@@ -251,6 +282,17 @@ await supabase.from("messages").update({ status: "pending" }).eq("status", "proc
 setInterval(() => {
   if (inFlight === 0) processBacklog();
 }, 30_000).unref();
+
+// キーミスの「覚える」道具（MCP）が、誰のメモとして書くかを知るため、利用者の ID を渡す。
+// 利用者は 1 人だけの決まり（画面からの新規登録はしない）。
+try {
+  const { data, error } = await supabase.auth.admin.listUsers({ perPage: 2 });
+  if (error) throw error;
+  if (data.users.length === 1) process.env.KYMIS_OWNER_ID = data.users[0].id;
+  else log(`利用者が ${data.users.length} 人いるため、「覚える」道具は使いません。`);
+} catch (e) {
+  log(`利用者を確かめられませんでした（${e.message ?? e}）。「覚える」道具は使いません。`);
+}
 
 // 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
 claude.start();
@@ -316,6 +358,21 @@ connect(
   (ch) => ch,
   (ch) => ch.track({ online_at: new Date().toISOString() }),
 );
+
+// 「覚えていること」と評価の変化を見張る。発言の通知とは別のチャンネルにする
+// （表がまだないデータベースでも、発言の通知が止まらないように）。
+// つながらなくても（表がないなど）つなぎ直しはしない。つなぎ直しは通信の土台ごと作り直すので、発言の通知まで止めてしまうため。
+let memoryWarned = false;
+supabase
+  .channel("kymis-memory")
+  .on("postgres_changes", { event: "*", schema: "public", table: "kymis_notes" }, () => (memoryChanged = true))
+  .on("postgres_changes", { event: "*", schema: "public", table: "feedback" }, () => (memoryChanged = true))
+  .subscribe((status) => {
+    if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !memoryWarned) {
+      memoryWarned = true;
+      log("「覚えていること」の変化を見張れません（データベースの更新前かもしれません）。会話は続けられます。");
+    }
+  });
 
 let announced = false;
 connect(

@@ -8,6 +8,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { run } from "./appdata.mjs";
+import { addNote, listNotes } from "./memory.mjs";
 
 const SERVER = { name: "kymis", version: "1.0.0" };
 
@@ -70,6 +71,26 @@ export const TOOLS = [
     inputSchema: { type: "object", properties: { ...appTable, where }, required: ["app", "table"] },
     argv: (a) => ["count", a.app, a.table, ...(a.where ?? []).flatMap((w) => ["--where", w])],
   },
+  {
+    name: "memory_list",
+    description: "キーミスが覚えていること（利用者の話し方の好み、利用者についての事実、決まり）の一覧を返す。書き留める前に、同じことがないか確かめるのに使う。",
+    inputSchema: { type: "object", properties: {} },
+    call: () => listNotes(),
+  },
+  {
+    name: "memory_add",
+    description:
+      "利用者について、はっきり分かった好みや事実を 1 つ書き留める（次の会話からも守られる）。推測、一度きりの話、秘密の値は書かない。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["style", "fact", "rule"], description: "style: 話し方・答え方の好み / fact: 利用者についての事実 / rule: 守ってほしい決まり" },
+        content: { type: "string", description: "覚えること（短い 1 文。例: 結論を先に、2 文以内で答えると喜ぶ）" },
+      },
+      required: ["kind", "content"],
+    },
+    call: (a) => addNote(a),
+  },
 ];
 
 /** 1 つの要求に答える。通知（id がないもの）には何も返さない。 */
@@ -94,7 +115,8 @@ export async function handle(msg) {
       const tool = TOOLS.find((t) => t.name === params?.name);
       if (!tool) return fail(-32602, `知らない道具です: ${params?.name}`);
       try {
-        const text = await run(tool.argv(params?.arguments ?? {}));
+        const args = params?.arguments ?? {};
+        const text = tool.call ? await tool.call(args) : await run(tool.argv(args));
         return reply({ content: [{ type: "text", text }] });
       } catch (e) {
         return reply({ content: [{ type: "text", text: `エラー: ${e.message}` }], isError: true });
