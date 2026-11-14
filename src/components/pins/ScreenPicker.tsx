@@ -6,17 +6,9 @@
 
 import { useEffect, useState } from "react";
 import { CloseIcon, PaletteIcon } from "@/components/hud/Icons";
+import { getScreens, openPalette, type ScreenInfo } from "@/lib/screens";
 
-type ScreenInfo = { label: string; availLeft: number; availTop: number; availWidth: number; availHeight: number; isPrimary: boolean };
-type ScreenDetails = { screens: ScreenInfo[]; currentScreen: ScreenInfo };
-
-/** パレットを開く。screen を省くと、普通の新しいウィンドウで開く */
-export function openPalette(n: number, screen?: ScreenInfo) {
-  const f = screen
-    ? `popup=yes,left=${screen.availLeft},top=${screen.availTop},width=${screen.availWidth},height=${screen.availHeight}`
-    : "popup=yes,width=1280,height=800";
-  return window.open(`/palette?n=${n}`, `dimy-palette-${n}`, f) !== null;
-}
+export { openPalette };
 
 export function ScreenPicker({ onClose, className = "" }: { onClose: () => void; className?: string }) {
   const [screens, setScreens] = useState<ScreenInfo[] | null>(null);
@@ -26,11 +18,14 @@ export function ScreenPicker({ onClose, className = "" }: { onClose: () => void;
 
   useEffect(() => {
     if (!supported) return;
-    (window as unknown as { getScreenDetails: () => Promise<ScreenDetails> })
-      .getScreenDetails()
-      .then((d) => {
-        setScreens(d.screens);
-        setCurrent(d.currentScreen);
+    getScreens(true)
+      .then((list) => {
+        if (!list) throw new Error();
+        setScreens(list);
+        // この画面があるモニター（ウィンドウの真ん中の点で探す）
+        const cx = window.screenX + window.outerWidth / 2;
+        const cy = window.screenY + window.outerHeight / 2;
+        setCurrent(list.find((s) => cx >= s.availLeft && cx < s.availLeft + s.availWidth && cy >= s.availTop && cy < s.availTop + s.availHeight) ?? null);
       })
       .catch(() => setMsg("モニターの一覧を読めませんでした。アドレス欄の左のアイコンから「ウィンドウの管理」を許可してください。"));
   }, [supported]);

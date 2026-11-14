@@ -28,6 +28,7 @@ import {
   type Rect,
 } from "@/lib/pins";
 import { droppedUrl } from "@/lib/frame";
+import { getScreens, openPalette, screenIndexAt } from "@/lib/screens";
 import { Bracket } from "@/components/hud/AppWindows";
 import { CaptureIcon, CloseIcon, ExternalIcon, LockIcon, PinIcon, ReloadIcon, SendIcon } from "@/components/hud/Icons";
 
@@ -291,20 +292,74 @@ export function usePinBoard(board: string, session: Session) {
   const dropTo = useCallback(
     (pin: Pin, screenX: number, screenY: number, grab: { x: number; y: number }) => {
       if (pin.kind !== "web") return false;
+      // モニターごとに拡大率が違うと座標が少しずれるので、画面の外 120px までは、いちばん近い画面に入れる
+      let best: { b: string; r: { x: number; y: number; w: number; h: number }; d: number } | null = null;
       for (const [b, r] of others.current) {
         if (Date.now() - r.at > 3000) continue;
-        if (screenX >= r.x && screenX < r.x + r.w && screenY >= r.y && screenY < r.y + r.h) {
-          chanRef.current?.postMessage({ type: "drop", to: b, pin, clientX: screenX - r.x, clientY: screenY - r.y, grab });
-          setPins((prev) => prev.filter((p) => p.id !== pin.id));
-          return true;
-        }
+        const dx = Math.max(r.x - screenX, 0, screenX - (r.x + r.w));
+        const dy = Math.max(r.y - screenY, 0, screenY - (r.y + r.h));
+        const d = Math.hypot(dx, dy);
+        if (d <= 120 && (!best || d < best.d)) best = { b, r, d };
       }
-      return false;
+      if (!best) return false;
+      const { b, r } = best;
+      const cx = Math.min(Math.max(screenX - r.x, 0), r.w - 1);
+      const cy = Math.min(Math.max(screenY - r.y, 0), r.h - 1);
+      chanRef.current?.postMessage({ type: "drop", to: b, pin, clientX: cx, clientY: cy, grab });
+      setPins((prev) => prev.filter((p) => p.id !== pin.id));
+      return true;
     },
     [],
   );
 
-  return { board, pins, streams, update, front, remove, addWeb, addCapture, send, view, setView, reload, dropTo, setSlots, toBoard };
+  /**
+   * パレットが開いていないモニターで離したとき: そのモニターにパレットを開いて、そこへ移す。
+   * モニターの位置が分からない（「ウィンドウの管理」の許可がまだ）ときは false
+   */
+  const dropToNewPalette = useCallback(
+    async (pin: Pin, screenX: number, screenY: number, grab: { x: number; y: number }) => {
+      if (pin.kind !== "web") return false;
+      const screens = await getScreens();
+      if (!screens) return false;
+      const i = screenIndexAt(screens, screenX, screenY);
+      if (i < 0) return false;
+      const to = `palette-${i + 1}`;
+      if (to === board) return false;
+      const scr = screens[i];
+      // パレットは開いたときに保存から読むので、先に保存へ入れておく
+      sendPin({ ...pin, x: Math.max(0, screenX - scr.availLeft - grab.x), y: Math.max(0, screenY - scr.availTop - grab.y - 60) }, to);
+      setPins((prev) => prev.filter((p) => p.id !== pin.id));
+      openPalette(i + 1, scr);
+      return true;
+    },
+    [board],
+  );
+
+  // 画面の外に出てしまったウィンドウを、見える場所に戻す（開いたとき・画面の大きさが変わったとき）
+  useEffect(() => {
+    if (!loaded) return;
+    const rescue = () =>
+      setPins((prev) => {
+        const v = viewRef.current;
+        const vw = window.innerWidth / v.z;
+        const vh = window.innerHeight / v.z;
+        const left = -v.x / v.z;
+        const top = -v.y / v.z;
+        let changed = false;
+        const next = prev.map((p) => {
+          const lost = p.x + p.w < left + 40 || p.x > left + vw - 40 || p.y < top - 4 || p.y > top + vh - 32;
+          if (!lost) return p;
+          changed = true;
+          return { ...p, x: Math.min(Math.max(p.x, left + 20), left + vw - Math.min(p.w, vw) - 20), y: Math.min(Math.max(p.y, top + 20), top + vh - 60) };
+        });
+        return changed ? next : prev;
+      });
+    rescue();
+    window.addEventListener("resize", rescue);
+    return () => window.removeEventListener("resize", rescue);
+  }, [loaded]);
+
+  return { board, pins, streams, update, front, remove, addWeb, addCapture, send, view, setView, reload, dropTo, dropToNewPalette, setSlots, toBoard };
 }
 
 export type PinBoardState = ReturnType<typeof usePinBoard>;
@@ -400,7 +455,7 @@ export function PinBoard({
   /** 画面分割の枠（画面の座標）。ドラッグして離すと、その枠いっぱいの大きさになる */
   slots?: Rect[];
 }) {
-  const { pins, streams, update, front, remove, addCapture, send, board, view, setView, dropTo, toBoard } = state;
+  const { pins, streams, update, front, remove, addCapture, send, board, view, setView, dropTo, dropToNewPalette, toBoard } = state;
   const [hoverSlot, setHoverSlot] = useState(-1);
   const v = zoomable ? view : DEFAULT_VIEW;
 
@@ -506,11 +561,24 @@ export function PinBoard({
     if (outside) {
       // 画面の外で離した: そこにあるディミの画面（パレットなど）へ送る。なければ元の場所に戻す
       const grab = { x: (a.sx - (a.o.x * v.z + v.x)), y: (a.sy - (a.o.y * v.z + v.y)) };
-      if (!dropTo(pin, e.screenX, e.screenY, grab)) update(a.id, { x: a.o.x, y: a.o.y });
+      if (dropTo(pin, e.screenX, e.screenY, grab)) return;
+      // パレットがない場所: そのモニターにパレットを開いて移す。できなければ元の場所に戻す
+      update(a.id, { x: a.o.x, y: a.o.y });
+      void dropToNewPalette(pin, e.screenX, e.screenY, grab);
       return;
     }
     // 帯が画面の上にはみ出したら戻す（つかめなくなるため）
     if (pin.y * v.z + v.y < 0) update(a.id, { y: -v.y / v.z });
+  }
+
+  // ドラッグの途中でつかみが外れた（ウィンドウの切り替えなど）ときは、元の場所に戻す
+  function lost() {
+    const a = action.current;
+    if (!a) return;
+    action.current = null;
+    setBusy(false);
+    setHoverSlot(-1);
+    update(a.id, { x: a.o.x, y: a.o.y, w: a.o.w, h: a.o.h });
   }
 
   const edge = (pin: Pin, dir: Dir, cls: string) =>
@@ -548,6 +616,8 @@ export function PinBoard({
                 onPointerDown={(e) => start(e, pin, "move")}
                 onPointerMove={move}
                 onPointerUp={end}
+                onPointerCancel={lost}
+                onLostPointerCapture={() => setTimeout(lost, 0)}
                 className={
                   "relative flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-transparent to-transparent pl-2.5 pr-5 " +
                   (pin.locked ? "" : "cursor-move")
