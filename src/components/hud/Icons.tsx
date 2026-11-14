@@ -49,10 +49,11 @@ export const ShrinkIcon = ({ className }: P) => (
     <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
   </svg>
 );
+/** 設定（歯車。8 つの歯を持つ輪と、真ん中の穴） */
 export const GearIcon = ({ className }: P) => (
   <svg viewBox="0 0 24 24" className={className} {...base}>
-    <circle cx="12" cy="12" r="3.2" />
-    <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" />
+    <path d="M10.3 2.5h3.4l.5 2.6a7.4 7.4 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.7a7.6 7.6 0 0 1 0 2.2l2 1.7-1.7 2.9-2.5-.9a7.4 7.4 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.4 7.4 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.7a7.6 7.6 0 0 1 0-2.2l-2-1.7 1.7-2.9 2.5.9a7.4 7.4 0 0 1 1.9-1.1z" />
+    <circle cx="12" cy="12" r="3" />
   </svg>
 );
 export const CloseIcon = ({ className }: P) => (
