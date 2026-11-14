@@ -113,3 +113,79 @@ export function WeatherIcon({ code, className }: P & { code: number }) {
     </svg>
   );
 }
+
+// 小窓の操作
+export const ExternalIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </svg>
+);
+export const ReloadIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" />
+  </svg>
+);
+export const MaxIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="4" y="4" width="16" height="16" rx="1.5" />
+  </svg>
+);
+export const RestoreIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="4" y="8" width="12" height="12" rx="1.5" />
+    <path d="M8 8V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-3" />
+  </svg>
+);
+
+// アプリのアイコン
+export function AppIcon({ id, className }: P & { id: string }) {
+  let body;
+  switch (id) {
+    case "fx": // 線のチャート
+      body = <path d="M3 18l5-6 4 3 5-8 4 4M3 21h18" />;
+      break;
+    case "kabu": // ローソク足
+      body = (
+        <>
+          <path d="M7 3v4M7 15v6M17 5v3M17 17v4" />
+          <rect x="5" y="7" width="4" height="8" rx="0.5" />
+          <rect x="15" y="8" width="4" height="9" rx="0.5" />
+        </>
+      );
+      break;
+    case "umsheet": // 表
+      body = (
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="1.5" />
+          <path d="M3 9h18M3 14h18M9 4v16M15 4v16" />
+        </>
+      );
+      break;
+    case "keiba": // 蹄鉄
+      body = <path d="M7 20H5c-1.5-3-2-6-1.5-9C4.3 6.6 7.8 4 12 4s7.7 2.6 8.5 7c.5 3 0 6-1.5 9h-2c1.3-3 1.6-5.6 1.1-8C17.4 8.6 15 7 12 7S6.6 8.6 5.9 12C5.4 14.4 5.7 17 7 20z" />;
+      break;
+    case "medical": // 十字
+      body = (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7.5v9M7.5 12h9" />
+        </>
+      );
+      break;
+    case "nencho": // 書類
+      body = (
+        <>
+          <path d="M6 3h9l4 4v14H6z" />
+          <path d="M15 3v4h4M9 12h7M9 16h5" />
+        </>
+      );
+      break;
+    default:
+      body = <circle cx="12" cy="12" r="8" />;
+  }
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...base}>
+      {body}
+    </svg>
+  );
+}

@@ -32,6 +32,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
   - Realtime につながらない・切れたときは、10 秒後に通信の土台（ソケット）ごと作り直してつなぎ直す（チャンネルだけ作り直しても、壊れたソケットのままではつながらない）。
 - 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。
 - メイン画面 `/`（`src/components/hud/`）: 声が中心。中央に光る球体と 4 区切りのリング（`Ring.tsx`、名前の 4 文字 D・I・M・Y にちなむオリジナルのデザイン。映画などの既存の画面を真似ない）、周りを流れるデータ（`DataField.tsx`、canvas）。文字は最小限で、操作はアイコン（`Icons.tsx`）。文字入力と会話の履歴は右上のアイコンで開くパネル（`Chat` の `embedded`）。左下に日時、右下に天気（Open-Meteo。地域は設定で入力し、ブラウザに保存）、左上に PC の状態。`/hud` は同じ画面、`/chat` は文字だけの画面。
+- アプリを開く（`src/lib/apps.ts` の一覧、`src/components/hud/AppWindows.tsx`）: 左端のアイコン、Alt + 数字、声（「FX を開いて」は Claude に渡さず画面で開く、`detectOpenCommand`）。基本はディミの画面の中の小窓（iframe。動かせる・大きさを変えられる・Chrome で開くボタンあり）。ログインが必要で dxdimix.com 以外のドメインのアプリは、中ではログインできない（SameSite の Cookie が送られない）ので、小さな別ウィンドウで開く（`canEmbed`）。そのアプリに 〇〇.dxdimix.com の URL を足して一覧の url を書き換えれば、中で開ける。医療機器管理は表示を禁止しているので別ウィンドウだけ。
 - 成長の仕組み: 返事ごとの評価（`feedback`、会話の GOOD / BAD）と、覚えていること（`kymis_notes`、`/memory` で見る・足す・消す）。常駐プログラムは、Claude Code を起動した最初の発言に「覚えていること」と最新 10 件の評価を添える（`buildMemoryBlock`）。どちらかが変わったら次の発言で Claude Code を起動し直す。ディミは MCP の `memory_add` で自分で書き留められる（ディミ自身の表だけ。利用者の ID は起動時に Supabase の利用者一覧から決める）。
 - 返事は短く（要点を 1〜3 文）。詳しくは聞かれたら話す（人格 `agent/lib/prompt.mjs`）。
 - スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。

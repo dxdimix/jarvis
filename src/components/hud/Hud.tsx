@@ -15,6 +15,8 @@ import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { Chat } from "@/components/Chat";
+import { APPS, detectOpenCommand } from "@/lib/apps";
+import { AppDock, AppWindows, useAppWindows } from "./AppWindows";
 import { Ring, type RingMode, type RingTone } from "./Ring";
 import { DataField } from "./DataField";
 import {
@@ -146,16 +148,48 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const speaker = useSpeaker(() => setCaptionUntil(Date.now() + CAPTION_MS), load(VOICE_KEY));
   const { speak, cancel: cancelSpeech } = speaker;
 
+  const appWins = useAppWindows();
+  const { open: openApp } = appWins;
+  // 画面からのお知らせ（「FX を開きます」など）。字幕に少しだけ出す
+  const [notice, setNotice] = useState<{ text: string; until: number } | null>(null);
+  const announce = useCallback(
+    (text: string) => {
+      setNotice({ text, until: Date.now() + 6000 });
+      if (speakOn) speak(text);
+    },
+    [speak, speakOn],
+  );
+
   const recognition = useSpeechRecognition(
     useCallback(
       async (text: string) => {
         setError("");
+        // 「〇〇を開いて」は、ディミに聞かずにこの画面ですぐ開く
+        const app = detectOpenCommand(text);
+        if (app) {
+          announce(openApp(app.id) ? `${app.name}を開きます` : `ブラウザに止められました。左のアイコンから${app.name}を開いてください`);
+          return;
+        }
         const { error } = await supabase.from("messages").insert({ role: "user", content: text });
         if (error) setError(`送信できませんでした: ${error.message}`);
       },
-      [supabase],
+      [supabase, announce, openApp],
     ),
   );
+
+  // ショートカット: Alt + 数字でアプリを開く（左のアイコンの上から順）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      const n = Number.parseInt(e.key, 10);
+      if (n >= 1 && n <= APPS.length) {
+        e.preventDefault();
+        openApp(APPS[n - 1].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openApp]);
 
   // 返事を 1 文書き終わるごとに読み上げる（この画面を開いてから届いた返事だけ）
   useEffect(() => {
@@ -201,9 +235,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const mode: RingMode = recognition.listening ? "listening" : speaker.speaking ? "speaking" : waiting ? "thinking" : "idle";
   const tone: RingTone = online === false ? "offline" : "normal";
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant");
+  const noticeOn = notice !== null && now !== null && now.getTime() < notice.until;
   const showCaption =
-    recognition.listening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil);
-  const caption = recognition.listening ? recognition.interim : lastReply?.content ?? "";
+    recognition.listening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil) || noticeOn;
+  const caption = recognition.listening ? recognition.interim : noticeOn ? notice!.text : lastReply?.content ?? "";
 
   function onMic() {
     if (recognition.listening) return recognition.stop();
@@ -311,8 +346,8 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         </div>
       )}
 
-      {/* 下中央：マイク */}
-      <div className="absolute inset-x-0 bottom-8 flex flex-col items-center">
+      {/* 下中央：マイク（小窓より手前に出す。周りの空いた所は、下の小窓をそのまま触れるようにする） */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-8 z-[900] flex flex-col items-center [&>*]:pointer-events-auto">
         {recognition.supported ? (
           <button
             onClick={onMic}
@@ -374,6 +409,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           )}
         </div>
       )}
+
+      {/* 左端：アプリのショートカット。開いたアプリの小窓 */}
+      <AppDock onOpen={openApp} />
+      <AppWindows state={appWins} />
 
       {/* 会話の履歴と文字入力（右から出るパネル） */}
       <aside
