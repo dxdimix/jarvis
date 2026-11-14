@@ -79,6 +79,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 - 利用者からディミの動き・返事・読み上げなどについて相談されたら、答える前に、まず `npm run history` を実行して、直近の会話（あなた / ディミの発言と status・エラー）、PC への命令、常駐プログラムの記録を確かめる。推測で答えない。
 - `npm run history` は .env.local の secret キーで本番のデータベースを読むので、利用者のデスクトップ PC（`dev\dimy`、Remote Control のセッションを含む）で動く。クラウドのセッションからは本番に届かないので、そのときは「PC のセッションで確かめる必要がある」と伝える。
 - 表示する件数は `npm run history -- --n 50 --logs 200` で増やせる。
+- 点検の決まった手順は `/dimy-check`（`.claude/commands/dimy-check.md`）。開発用の `dev\dimy` なら git pull してから記録を読み、問題と直し方を報告する。
 
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。
