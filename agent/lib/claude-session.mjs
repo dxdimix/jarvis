@@ -142,7 +142,7 @@ export class ClaudeSession {
         this.#fail("時間内に返事ができませんでした。");
         this.stop();
       }, this.options.timeoutMs);
-      this.pending = { resolve, reject, onText, text: "", timer };
+      this.pending = { resolve, reject, onText, text: "", blocks: [], timer };
       const msg = { type: "user", message: { role: "user", content: text } };
       this.child.stdin.write(JSON.stringify(msg) + "\n");
     });
@@ -180,11 +180,17 @@ export class ClaudeSession {
     if (ev.type === "stream_event") {
       const e = ev.event;
       // 道具（Web 検索など）を使う前後で文章が複数の塊に分かれるので、塊の間に空行を入れてつなぐ。
+      // 道具を使う前と後で同じ文を繰り返すことがあるので、前の塊に含まれている塊は出さない（読み上げが 2 回になるため）。
       if (e?.type === "content_block_start" && e.content_block?.type === "text") {
-        if (p.text) p.text += "\n\n";
+        p.blocks.push("");
       } else if (e?.type === "content_block_delta" && e.delta?.type === "text_delta") {
-        p.text += e.delta.text;
-        p.onText?.(p.text);
+        if (!p.blocks.length) p.blocks.push("");
+        p.blocks[p.blocks.length - 1] += e.delta.text;
+        const text = joinBlocks(p.blocks);
+        if (text !== p.text) {
+          p.text = text;
+          p.onText?.(p.text);
+        }
       }
     } else if (ev.type === "result") {
       clearTimeout(p.timer);
@@ -204,6 +210,23 @@ export class ClaudeSession {
     this.pending = null;
     p.reject(new Error(message));
   }
+}
+
+/**
+ * 文章の塊をつなぐ。前の塊にすでに含まれている塊（同じ文の繰り返し）は除く。
+ * 書いている途中の塊も、前の塊に含まれているうちは出さない。
+ * @param {string[]} blocks
+ */
+export function joinBlocks(blocks) {
+  const norm = (t) => t.replace(/[\s、。,.!！?？「」]/g, "");
+  const out = [];
+  for (const b of blocks) {
+    const t = b.trim();
+    if (!t) continue;
+    if (out.length && norm(out.join("")).includes(norm(t))) continue;
+    out.push(t);
+  }
+  return out.join("\n\n");
 }
 
 /**

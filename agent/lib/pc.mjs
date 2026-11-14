@@ -98,7 +98,7 @@ export function listClaudeSessions(root = path.join(os.homedir(), ".claude", "pr
   return out;
 }
 
-function profilesNow() {
+export function profilesNow() {
   try {
     return listChromeProfiles(JSON.parse(fs.readFileSync(path.join(chromeUserDataDir(), "Local State"), "utf8")));
   } catch {

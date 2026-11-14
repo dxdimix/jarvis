@@ -10,6 +10,10 @@ describe("ディミの道具（MCP サーバー）", () => {
     expect(init?.result?.serverInfo?.name).toBe("dimy");
     const list = await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     expect(list?.result?.tools?.map((t) => t.name)).toEqual([
+      "chrome_accounts",
+      "open_in_chrome",
+      "claude_sessions",
+      "open_claude_session",
       "app_list",
       "app_tables",
       "app_columns",

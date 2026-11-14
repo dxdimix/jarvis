@@ -18,7 +18,16 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWakeWord } from "@/hooks/useWakeWord";
 import { useActiveDevice } from "@/hooks/useActiveDevice";
 import { isEcho, toSpeech } from "@/lib/wake";
-import { extractAccount, matchSession, parseMoveCommand, parseSearchCommand, parseSessionCommand, searchUrl } from "@/lib/commands";
+import {
+  extractAccount,
+  matchSession,
+  parseMoveCommand,
+  parseOpenSite,
+  parseSearchCommand,
+  parseSessionCommand,
+  searchUrl,
+  stripBrowser,
+} from "@/lib/commands";
 import { loadPcState, sendPcCommand, type PcState } from "@/lib/pc";
 import { boardLabel, loadPins, savePins, sendPin } from "@/lib/pins";
 import { Chat } from "@/components/Chat";
@@ -241,6 +250,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const { speak: speakRaw, cancel: cancelSpeech } = speaker;
   const speak = useCallback(
     (text: string) => {
+      // 念のため: 同じ文を 5 秒以内に 2 回読まない
+      const norm = (t: string) => t.replace(/[\s、。,.!！?？]/g, "");
+      if (recentSpoken.current.some((x) => Date.now() - x.at < 5_000 && norm(x.text) === norm(text))) return;
       recentSpoken.current = [...recentSpoken.current.filter((x) => Date.now() - x.at < 60_000), { text, at: Date.now() }];
       speakRaw(text);
     },
@@ -395,6 +407,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const noticeOn = notice !== null && now !== null && now.getTime() < notice.until;
   const showCaption =
     recognition.listening || wakeListening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil) || noticeOn;
+  // 字幕の枠（長い返事は、いちばん下＝読んでいるところへ自動で送る）
+  const captionRef = useRef<HTMLDivElement>(null);
+  const captionFollow = useRef(true);
   const caption = recognition.listening ? recognition.interim : wakeListening ? wake.interim || "どうぞ" : noticeOn ? notice!.text : lastReply?.content ?? "";
 
   // 固定ウィンドウ（メイン画面に置いておくページや映像）
@@ -459,6 +474,22 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       }
       return true;
     };
+    // 「Chrome で」「ブラウザで」が付いていたら、ディミの中ではなく Chrome で開く
+    const br = stripBrowser(text);
+    const acc0 = extractAccount(br.rest, names);
+    if (br.chrome || acc0.account !== null) {
+      const app = detectOpenCommand(acc0.rest);
+      if (app) {
+        await openOutside(app.url, app.name, acc0.account);
+        return done();
+      }
+    }
+    const site = parseOpenSite(acc0.rest);
+    if (site) {
+      await openOutside(site.url, site.name, acc0.account);
+      return done();
+    }
+    text = br.rest;
     const mv = parseMoveCommand(text);
     if (mv) {
       const n = movePins(mv.from, mv.to);
@@ -536,6 +567,15 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // 字幕が書き足されたら、いちばん下へ送る（新しい返事のときは、また下を追いかける）
+  useEffect(() => {
+    const el = captionRef.current;
+    if (el && captionFollow.current) el.scrollTop = el.scrollHeight;
+  }, [caption]);
+  useEffect(() => {
+    captionFollow.current = true;
+  }, [lastReply?.id]);
 
   function onMic() {
     cancelSpeech();
@@ -619,13 +659,24 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       </div>
 
       {/* 字幕（話している・聞いている間と、返事のあと少しだけ） */}
+      {/* 長いときは省かずに、枠の中でスクロールして全文を出す（書き足されるたびに、いちばん下へ送る） */}
       <div
         className={
-          "pointer-events-none absolute inset-x-0 bottom-32 mx-auto max-w-2xl px-6 text-center transition-opacity duration-700 " +
-          (showCaption && caption ? "opacity-100" : "opacity-0")
+          "absolute inset-x-0 bottom-32 z-[850] mx-auto max-w-2xl px-6 transition-opacity duration-700 " +
+          (showCaption && caption ? "opacity-100" : "pointer-events-none opacity-0")
         }
       >
-        <p className="line-clamp-3 text-base leading-relaxed text-cyan-100/90 drop-shadow-[0_0_8px_rgba(2,6,23,0.9)]">{caption}</p>
+        <div
+          ref={captionRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            // 利用者が上へ戻して読んでいる間は、自動で下へ送らない
+            captionFollow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+          }}
+          className="dimy-caption max-h-[7.5rem] overflow-y-auto rounded-md bg-slate-950/45 px-3 py-1 backdrop-blur-sm text-center text-base leading-relaxed text-cyan-100/90 drop-shadow-[0_0_8px_rgba(2,6,23,0.9)] [mask-image:linear-gradient(to_bottom,transparent,black_14px,black)]"
+        >
+          <p className="whitespace-pre-wrap pt-2">{caption}</p>
+        </div>
       </div>
 
       {/* 左上：PC の状態 */}

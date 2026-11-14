@@ -9,6 +9,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { run } from "./appdata.mjs";
 import { addNote, listNotes } from "./memory.mjs";
+import { listClaudeSessions, profilesNow, runCommand } from "../lib/pc.mjs";
 
 const SERVER = { name: "dimy", version: "1.0.0" };
 
@@ -22,7 +23,50 @@ const where = {
   description: "絞り込み。「列=演算子.値」の形。例: [\"status=eq.error\", \"created_at=gte.2026-11-13\"]。演算子: eq neq gt gte lt lte like ilike is in",
 };
 
+const noLog = () => {};
+
 export const TOOLS = [
+  {
+    name: "chrome_accounts",
+    description: "PC の Chrome のアカウント（プロフィール）の一覧を返す。番号がアカウントの番号（アカウント1, 2, …）。",
+    inputSchema: { type: "object", properties: {} },
+    call: () => {
+      const list = profilesNow();
+      return list.length ? list.map((p, i) => `アカウント${i + 1}: ${p.name}${p.email ? `（${p.email}）` : ""}`).join("\n") : "Chrome のプロフィールが見つかりません。";
+    },
+  },
+  {
+    name: "open_in_chrome",
+    description:
+      "利用者の PC の Chrome で、ページを開く（YouTube、Google の検索、ニュース、買い物のサイトなど、http / https の URL ならどれでも）。" +
+      "「開いて」「見せて」「検索して」「再生して」と頼まれたら、この道具で開く。検索なら検索結果の URL（例: https://www.youtube.com/results?search_query=…、https://www.google.com/search?q=…）を作って開く。" +
+      "account はアカウントの番号（「アカウント2で」と言われたら 2。指定がなければ省く＝いつものアカウント）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "開く URL（http / https）" },
+        account: { type: "number", description: "Chrome のアカウントの番号（1 から）。省くといつものアカウント" },
+      },
+      required: ["url"],
+    },
+    call: (a) => runCommand({ kind: "open_url", payload: { url: a.url, account: a.account ?? Number(process.env.DIMY_DEFAULT_ACCOUNT || 1) } }, { log: noLog }),
+  },
+  {
+    name: "claude_sessions",
+    description: "PC の Claude Code のセッションの一覧（新しい順。題名・フォルダ・番号）。query を渡すと、題名にその言葉を含むものだけ。",
+    inputSchema: { type: "object", properties: { query: { type: "string", description: "題名に含まれる言葉（省略可）" } } },
+    call: (a) => {
+      const q = String(a.query ?? "").trim();
+      const list = listClaudeSessions().filter((x) => !q || x.title.includes(q) || x.project.includes(q)).slice(0, 15);
+      return list.length ? list.map((x) => `${x.id}  ${x.updated_at.slice(0, 16)}  [${x.project}] ${x.title}`).join("\n") : "見つかりません。";
+    },
+  },
+  {
+    name: "open_claude_session",
+    description: "PC の Claude Code のセッションを、新しいコマンドプロンプトの画面で開き直す（claude --resume）。id は claude_sessions で出る番号。",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    call: (a) => runCommand({ kind: "open_session", payload: { id: a.id } }, { log: noLog }),
+  },
   {
     name: "app_list",
     description: "データを読めるアプリの一覧と、その説明（括弧の中）を返す。最初にこれを使う。",

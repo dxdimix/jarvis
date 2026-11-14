@@ -18,6 +18,9 @@ export default function Home() {
   }, [supabase]);
 
   if (session === undefined) return null;
+  // ディミの画面の中（小窓・固定ウィンドウ）にディミ自身を開いたときは、何もしない（声が 2 回出るため）
+  if (typeof window !== "undefined" && window.top !== window.self)
+    return <p className="grid h-dvh place-items-center bg-slate-950 p-6 text-center text-sm text-slate-400">ディミの画面の中には、ディミを開けません。</p>;
   if (!session) return <LoginForm supabase={supabase} />;
   return <Hud supabase={supabase} session={session} />;
 }

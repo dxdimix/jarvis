@@ -130,3 +130,37 @@ export function matchSession<T extends { title: string }>(list: T[], query: stri
   }
   return bestScore >= 0.6 ? best : null;
 }
+
+/**
+ * 「Chrome で」「ブラウザで」などの言い方を取り出す（付いていたら、ディミの中ではなく Chrome で開く）。
+ */
+export function stripBrowser(text: string): { chrome: boolean; rest: string } {
+  const re = /(google\s*)?(chrome|クローム|ブラウザ|エッジ|edge)\s*(で|から|に)?/i;
+  const m = text.match(re);
+  if (!m) return { chrome: false, rest: text };
+  return { chrome: true, rest: text.replace(m[0], " ").replace(/\s+/g, " ").trim() };
+}
+
+/** よく使うサイト（声で「〇〇を開いて」と言われたら、Chrome で開く） */
+export const SITES: { name: string; url: string; words: string[] }[] = [
+  { name: "YouTube", url: "https://www.youtube.com/", words: ["youtube", "ユーチューブ", "ようつべ"] },
+  { name: "Gmail", url: "https://mail.google.com/", words: ["gmail", "ジーメール", "メール"] },
+  { name: "Google カレンダー", url: "https://calendar.google.com/", words: ["カレンダー", "calendar", "グーグルカレンダー", "googleカレンダー", "googlecalendar"] },
+  { name: "Google ドライブ", url: "https://drive.google.com/", words: ["ドライブ", "drive", "グーグルドライブ", "googleドライブ", "googledrive"] },
+  { name: "Google マップ", url: "https://www.google.com/maps", words: ["マップ", "地図", "maps", "グーグルマップ", "googleマップ", "googlemaps"] },
+  { name: "Google", url: "https://www.google.com/", words: ["google", "グーグル"] },
+  { name: "Amazon", url: "https://www.amazon.co.jp/", words: ["amazon", "アマゾン"] },
+  { name: "X", url: "https://x.com/", words: ["ツイッター", "twitter", "エックス"] },
+  { name: "Claude", url: "https://claude.ai/", words: ["claude", "クロード"] },
+];
+
+const OPEN_WORDS = /(開いて|ひらいて|開けて|表示して|見せて|出して|起動して|開く|つけて)$/;
+
+/** 「YouTube を開いて」→ YouTube。開く命令でなければ null（検索やセッションの命令は、先に別の判定で受ける） */
+export function parseOpenSite(text: string): { name: string; url: string } | null {
+  const t = text.toLowerCase().replace(/[\s。.!！?？]/g, "");
+  if (!OPEN_WORDS.test(t)) return null;
+  const target = t.replace(OPEN_WORDS, "").replace(/(を|の画面|のページ|のサイト)+$/, "");
+  for (const site of SITES) if (site.words.some((w) => target === w.toLowerCase())) return { name: site.name, url: site.url };
+  return null;
+}

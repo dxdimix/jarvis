@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractAccount, matchSession, parseMoveCommand, parseSearchCommand, parseSessionCommand, searchUrl } from "../src/lib/commands";
+import { parseOpenSite, stripBrowser, extractAccount, matchSession, parseMoveCommand, parseSearchCommand, parseSessionCommand, searchUrl } from "../src/lib/commands";
 
 describe("parseSearchCommand", () => {
   it("YouTube / Google で検索", () => {
@@ -53,5 +53,21 @@ describe("Claude のセッション", () => {
   it("アカウントの指定", () => {
     expect(extractAccount("アカウント2で FX を開いて")).toEqual({ account: 2, rest: "FX を開いて" });
     expect(extractAccount("個人のアカウントでYouTubeを開いて", { 2: "個人" }).account).toBe(2);
+  });
+});
+
+describe("Chrome で開く・よく使うサイト", () => {
+  it("「Chrome で」を取り出す", () => {
+    expect(stripBrowser("YouTubeをChromeで開いて")).toEqual({ chrome: true, rest: "YouTubeを 開いて" });
+    expect(stripBrowser("FXをブラウザで開いて").chrome).toBe(true);
+    expect(stripBrowser("FXを開いて").chrome).toBe(false);
+  });
+  it("サイトを開く命令", () => {
+    expect(parseOpenSite("YouTubeを開いて")?.name).toBe("YouTube");
+    expect(parseOpenSite("ユーチューブ 開いて")?.name).toBe("YouTube");
+    expect(parseOpenSite("YouTubeを 開いて")?.name).toBe("YouTube");
+    expect(parseOpenSite("グーグルカレンダーを開いて")?.name).toBe("Google カレンダー");
+    expect(parseOpenSite("カレンダーを見せて")?.name).toBe("Google カレンダー");
+    expect(parseOpenSite("YouTubeで人気の動画は")).toBeNull();
   });
 });

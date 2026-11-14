@@ -255,3 +255,9 @@ body {
     animation: none;
   }
 }
+
+/* 字幕の枠のスクロールバー（細く、目立たせない） */
+.dimy-caption {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.35) transparent;
+}
