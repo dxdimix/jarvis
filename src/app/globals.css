@@ -161,3 +161,25 @@ body {
     animation: none;
   }
 }
+
+/* メイン画面の計器（HudChrome.tsx） */
+@keyframes dimy-blink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0.15; }
+}
+.dimy-blink {
+  animation: dimy-blink 1.6s steps(1) infinite;
+}
+@keyframes dimy-rail {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(400%); }
+}
+.dimy-rail {
+  animation: dimy-rail 3.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dimy-blink,
+  .dimy-rail {
+    animation: none;
+  }
+}

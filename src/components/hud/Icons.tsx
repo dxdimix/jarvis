@@ -205,3 +205,41 @@ export const WakeIcon = ({ className, off }: P & { off?: boolean }) => (
     {off && <path d="M3 3l18 18" />}
   </svg>
 );
+
+/** 固定ウィンドウ（ピン） */
+export const PinIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <path d="M9 3h6l-1 6 4 4H6l4-4z" />
+    <path d="M12 13v8" />
+  </svg>
+);
+/** パレット（ほかのモニターに置く画面） */
+export const PaletteIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="2.5" y="5" width="9" height="7" rx="1" />
+    <rect x="12.5" y="5" width="9" height="7" rx="1" />
+    <rect x="2.5" y="13" width="9" height="6" rx="1" />
+    <rect x="12.5" y="13" width="9" height="6" rx="1" />
+  </svg>
+);
+/** 鍵（位置を固定） */
+export const LockIcon = ({ className, open }: P & { open?: boolean }) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="5" y="11" width="14" height="9" rx="1.5" />
+    <path d={open ? "M8 11V8a4 4 0 0 1 7.5-2" : "M8 11V8a4 4 0 0 1 8 0v3"} />
+  </svg>
+);
+/** 送る（別の置き場所へ） */
+export const SendIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <path d="M4 12h13M12 6l6 6-6 6M20 4v16" />
+  </svg>
+);
+/** 画面を映す（映像） */
+export const CaptureIcon = ({ className }: P) => (
+  <svg viewBox="0 0 24 24" className={className} {...base}>
+    <rect x="3" y="5" width="18" height="12" rx="1.5" />
+    <circle cx="12" cy="11" r="2.5" />
+    <path d="M8 21h8" />
+  </svg>
+);

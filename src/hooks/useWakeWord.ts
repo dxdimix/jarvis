@@ -22,6 +22,7 @@ export function useWakeWord(o: {
   onWake: () => void; // 呼ばれた（「はい」と答える）
   onCommand: (text: string) => void; // 話しかけられた内容
   onControl: (c: Control) => void; // 終わり・聞かないで・取り消し
+  volume?: number; // 合図の音の大きさ（0〜1。ディミの声の大きさと同じ）
   followMs?: number; // 返事のあと、続けて話せる時間（0 なら続けて話せない。既定 8 秒）
 }) {
   // 内部の状態。使わない設定のときは外には "off" と見せる（下の return）
@@ -58,7 +59,7 @@ export function useWakeWord(o: {
   const wakeUp = useCallback(() => {
     wokeAt.current = Date.now();
     setState("command");
-    chime();
+    chime(cb.current.volume ?? 1);
     cb.current.onWake();
   }, [setState]);
 
@@ -201,7 +202,8 @@ export function useWakeWord(o: {
 
 // 呼ばれたときの短い合図の音（声の「はい」より先に、すぐ鳴る）
 let audioCtx: AudioContext | null = null;
-function chime() {
+function chime(volume: number) {
+  if (volume <= 0) return;
   try {
     audioCtx ??= new AudioContext();
     const t = audioCtx.currentTime;
@@ -211,7 +213,7 @@ function chime() {
     osc.frequency.setValueAtTime(880, t);
     osc.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.12 * volume), t + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
     osc.connect(gain).connect(audioCtx.destination);
     osc.start(t);

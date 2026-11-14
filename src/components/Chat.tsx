@@ -100,6 +100,7 @@ export function Chat({
       voiceName: loadSetting("voice", "") || null,
       rate: Number(loadSetting("rate", "")) || undefined,
       pitch: Number(loadSetting("pitch", "")) || undefined,
+      volume: loadSetting("volume", "") === "" ? undefined : Number(loadSetting("volume", "")),
     },
   );
   const { speak, cancel: cancelSpeech, isSpeaking } = speaker;

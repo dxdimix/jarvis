@@ -24,12 +24,18 @@ import { AppDock, AppWindows, useAppWindows } from "./AppWindows";
 import { Ring, type RingMode, type RingTone } from "./Ring";
 import { DataField } from "./DataField";
 import { Settings } from "./Settings";
+import { HudChrome } from "./HudChrome";
+import { DropOverlay, PinBoard, usePinBoard, usePinDrop } from "@/components/pins/PinBoard";
+import { PinAdd } from "@/components/pins/PinAdd";
+import { ScreenPicker } from "@/components/pins/ScreenPicker";
 import {
   ChatIcon,
   CloseIcon,
   ExpandIcon,
   GearIcon,
   MemoryIcon,
+  PaletteIcon,
+  PinIcon,
   BookmarkIcon,
   MicIcon,
   PcIcon,
@@ -44,6 +50,7 @@ const WAKE_KEY = "dimy.wake"; // 「ディミ」の呼びかけを待つか（�
 const VOICE_KEY = "dimy.voice";
 const RATE_KEY = "dimy.rate"; // 話す速さ
 const PITCH_KEY = "dimy.pitch"; // 声の高さ
+const VOLUME_KEY = "dimy.volume"; // ディミの声の大きさ（PC 全体の音量とは別）
 const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
 const HOTKEY_KEY = "dimy.hotkey"; // 右 Ctrl を 2 回で話すか
 const CAPTION_KEY = "dimy.captionSec"; // 返事の字幕を出しておく時間（秒）
@@ -104,7 +111,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const online = useAgentOnline(supabase);
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks">("none");
+  const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette">("none");
   // Chrome のブックマーク（PC のディミが写したもの）。表がまだないときは空のまま
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const bookmarksRef = useRef<Bookmark[]>([]);
@@ -199,7 +206,12 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       followUpAfterSpeech.current = false;
       wakeRef.current?.followUp();
     }
-  }, { voiceName: load(VOICE_KEY), rate: loadNumber(RATE_KEY, NaN) || undefined, pitch: loadNumber(PITCH_KEY, NaN) || undefined });
+  }, {
+    voiceName: load(VOICE_KEY),
+    rate: loadNumber(RATE_KEY, NaN) || undefined,
+    pitch: loadNumber(PITCH_KEY, NaN) || undefined,
+    volume: loadNumber(VOLUME_KEY, NaN),
+  });
   const { speak, cancel: cancelSpeech } = speaker;
 
   const appWins = useAppWindows();
@@ -247,6 +259,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     enabled: wakeOn,
     speaking: speaker.speaking || recognition.listening,
     followMs: followSec * 1000,
+    volume: speaker.volume,
     onWake: () => announce("はい"),
     onCommand: handleUtterance,
     onControl: (c) => {
@@ -334,6 +347,23 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     recognition.listening || wakeListening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil) || noticeOn;
   const caption = recognition.listening ? recognition.interim : wakeListening ? wake.interim || "どうぞ" : noticeOn ? notice!.text : lastReply?.content ?? "";
 
+  // 固定ウィンドウ（メイン画面に置いておくページや映像）
+  const pins = usePinBoard("hud", session);
+  const dragging = usePinDrop((url, at) => pins.addWeb(url, at));
+
+  // 今日の会話の数（計器に出す）
+  const [todayCount, setTodayCount] = useState<number | null>(null);
+  const userMsgs = messages.filter((m) => m.role === "user").length;
+  useEffect(() => {
+    const start = new Date(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" }) + "T00:00:00+09:00");
+    supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("role", "user")
+      .gte("created_at", start.toISOString())
+      .then(({ count }) => setTodayCount(count ?? null));
+  }, [supabase, userMsgs]);
+
   function onMic() {
     cancelSpeech();
     // 呼びかけを待つ設定なら、「ディミ」と言わずにすぐ話せる状態にする
@@ -403,6 +433,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   return (
     <div className="dimy-grid relative h-dvh w-full overflow-hidden text-cyan-100">
       <DataField mode={mode} tone={tone} />
+      <HudChrome now={now} mode={mode} online={online} messages={messages} todayCount={todayCount} pinCount={pins.pins.length} />
 
       {/* 中央：球体とリング */}
       <div className="absolute inset-0 grid place-items-center">
@@ -432,7 +463,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       </div>
 
       {/* 右上：アイコン */}
-      <nav className="absolute right-5 top-5 flex gap-2">
+      <nav className="absolute right-5 top-5 z-[800] flex gap-2">
         <button onClick={() => setPanel(panel === "chat" ? "none" : "chat")} className={iconBtn} title="会話の履歴と文字入力" aria-label="会話の履歴と文字入力">
           <ChatIcon className="h-5 w-5" />
         </button>
@@ -450,6 +481,12 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         <Link href="/memory" className={iconBtn} title="覚えていること" aria-label="覚えていること">
           <MemoryIcon className="h-5 w-5" />
         </Link>
+        <button onClick={() => setPanel(panel === "pin" ? "none" : "pin")} className={iconBtn} title="固定ウィンドウを置く" aria-label="固定ウィンドウを置く">
+          <PinIcon className="h-5 w-5" />
+        </button>
+        <button onClick={() => setPanel(panel === "palette" ? "none" : "palette")} className={iconBtn} title="パレットをほかのモニターに開く" aria-label="パレットを開く">
+          <PaletteIcon className="h-5 w-5" />
+        </button>
         <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
           <GearIcon className="h-5 w-5" />
         </button>
@@ -570,6 +607,11 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             speaker.setRate(v);
             save(RATE_KEY, String(v));
           }}
+          volume={speaker.volume}
+          setVolume={(v) => {
+            speaker.setVolume(v);
+            save(VOLUME_KEY, String(v));
+          }}
           pitch={speaker.pitch}
           setPitch={(v) => {
             speaker.setPitch(v);
@@ -603,6 +645,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       )}
 
       {/* 左端：アプリのショートカット。開いたアプリの小窓 */}
+      <PinBoard state={pins} className="z-[5]" />
+      {panel === "pin" && <PinAdd state={pins} onClose={closePanel} className="absolute right-5 top-20 z-[850]" />}
+      {panel === "palette" && <ScreenPicker onClose={closePanel} className="absolute right-5 top-20 z-[850]" />}
+      <DropOverlay show={dragging} />
       <AppDock onOpen={openApp} />
       <AppWindows state={appWins} />
 

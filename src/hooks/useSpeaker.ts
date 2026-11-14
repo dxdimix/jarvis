@@ -5,6 +5,7 @@ import { pickJapaneseVoice } from "@/lib/speech";
 
 export const DEFAULT_RATE = 1.1;
 export const DEFAULT_PITCH = 1;
+export const DEFAULT_VOLUME = 1;
 
 /**
  * ブラウザの読み上げ機能（speechSynthesis）で返事を声にする。無料。OS やブラウザに入っている声を使う。
@@ -12,7 +13,7 @@ export const DEFAULT_PITCH = 1;
  */
 export function useSpeaker(
   onIdle: () => void,
-  initial: { voiceName?: string | null; rate?: number; pitch?: number } = {},
+  initial: { voiceName?: string | null; rate?: number; pitch?: number; volume?: number } = {},
 ) {
   const supported = typeof window !== "undefined" && "speechSynthesis" in window;
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -20,6 +21,10 @@ export function useSpeaker(
   // 話す速さ（0.7〜1.6）と声の高さ（0.7〜1.4）
   const [rate, setRate] = useState(initial.rate ?? DEFAULT_RATE);
   const [pitch, setPitch] = useState(initial.pitch ?? DEFAULT_PITCH);
+  // ディミの声の大きさ（0〜1）。PC 全体の音量とは別に決める（PC の音量より大きくはできない）
+  const [volume, setVolume] = useState(
+    initial.volume !== undefined && Number.isFinite(initial.volume) ? Math.min(1, Math.max(0, initial.volume)) : DEFAULT_VOLUME,
+  );
   const queued = useRef(0);
   // 読み上げ中かどうか（画面の動きに使う）
   const [speaking, setSpeaking] = useState(false);
@@ -47,6 +52,7 @@ export function useSpeaker(
       if (voice) u.voice = voice;
       u.rate = rate;
       u.pitch = pitch;
+      u.volume = volume;
       queued.current++;
       setSpeaking(true);
       const done = () => {
@@ -60,7 +66,7 @@ export function useSpeaker(
       u.onerror = done;
       window.speechSynthesis.speak(u);
     },
-    [supported, voice, rate, pitch],
+    [supported, voice, rate, pitch, volume],
   );
 
   const cancel = useCallback(() => {
@@ -72,5 +78,5 @@ export function useSpeaker(
 
   const isSpeaking = useCallback(() => queued.current > 0, []);
 
-  return { supported, speak, cancel, isSpeaking, speaking, japaneseVoices, voiceName: voice?.name ?? null, setVoiceName, rate, setRate, pitch, setPitch };
+  return { supported, speak, cancel, isSpeaking, speaking, japaneseVoices, voiceName: voice?.name ?? null, setVoiceName, rate, setRate, pitch, setPitch, volume, setVolume };
 }

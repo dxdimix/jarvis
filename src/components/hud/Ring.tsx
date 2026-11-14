@@ -18,7 +18,8 @@ const COLORS: Record<RingTone, { main: string; soft: string; glow: string }> = {
 
 function point(r: number, deg: number) {
   const rad = ((deg - 90) * Math.PI) / 180;
-  return { x: C + r * Math.cos(rad), y: C + r * Math.sin(rad) };
+  // サーバーとブラウザで小数の端が変わらないよう、丸める
+  return { x: Math.round((C + r * Math.cos(rad)) * 100) / 100, y: Math.round((C + r * Math.sin(rad)) * 100) / 100 };
 }
 
 /** 中心から半径 r の円弧（start〜end 度。上が 0 度、時計回り）。 */

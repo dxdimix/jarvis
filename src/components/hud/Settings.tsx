@@ -1,13 +1,13 @@
 "use client";
 
 // 設定の画面。項目をカテゴリーごとのタブに分ける。設定はこの端末のブラウザに保存する。
-// - 音声: 読み上げ、声、話す速さ、声の高さ
+// - 音声: 読み上げ、声の大きさ、声、話す速さ、声の高さ
 // - 呼びかけ: 「ディミ」の呼びかけ、続けて話せる時間、右 Ctrl を 2 回
 // - 表示: 天気の地域、字幕を出しておく時間
 
 import { useEffect, useState } from "react";
 import type { Place } from "@/lib/weather";
-import { DEFAULT_PITCH, DEFAULT_RATE } from "@/hooks/useSpeaker";
+import { DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOLUME } from "@/hooks/useSpeaker";
 import { CloseIcon } from "./Icons";
 
 type Tab = "voice" | "wake" | "display";
@@ -28,6 +28,8 @@ export type SettingsProps = {
   setVoiceName: (name: string) => void;
   rate: number;
   setRate: (v: number) => void;
+  volume: number;
+  setVolume: (v: number) => void;
   pitch: number;
   setPitch: (v: number) => void;
   onTestVoice: () => void;
@@ -116,6 +118,17 @@ function VoiceTab(p: SettingsProps) {
   return (
     <>
       <Toggle label="返事を読み上げる" checked={p.speakOn} onChange={p.setSpeakOn} />
+      <Slider
+        label="ディミの声の大きさ"
+        value={p.volume}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={p.setVolume}
+        def={DEFAULT_VOLUME}
+        format={(v) => `${Math.round(v * 100)}%`}
+        note="PC 全体の音量とは別の設定です。ほかのアプリの音は変わりません。PC の音量より大きくはできないので、最大でも小さいときは PC の音量を上げてください。"
+      />
       {p.voices.length > 0 && (
         <Row label="声">
           <select
@@ -254,6 +267,7 @@ function Slider(o: {
   def: number;
   onChange: (v: number) => void;
   format: (v: number) => string;
+  note?: string;
 }) {
   return (
     <div>
@@ -278,6 +292,7 @@ function Slider(o: {
         className="w-full accent-cyan-400"
         aria-label={o.label}
       />
+      {o.note && <p className="mt-1 text-xs text-slate-400">{o.note}</p>}
     </div>
   );
 }

@@ -77,7 +77,7 @@ export function useAppWindows() {
 }
 
 /** 光る角の印（L 字）。corner で向きを決める */
-function Bracket({ corner, className = "" }: { corner: "tl" | "br"; className?: string }) {
+export function Bracket({ corner, className = "" }: { corner: "tl" | "br"; className?: string }) {
   const d = corner === "tl" ? "M1.5 22V1.5H22" : "M22.5 2v20.5H2";
   return (
     <svg viewBox="0 0 24 24" className={"pointer-events-none absolute h-7 w-7 text-cyan-200 drop-shadow-[0_0_8px_rgba(34,211,238,1)] " + className}>
