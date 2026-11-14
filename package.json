@@ -13,7 +13,8 @@
     "db:push": "supabase db push",
     "db:new": "supabase migration new",
     "db:types": "supabase gen types typescript --linked > src/lib/database.types.ts",
-    "history": "node scripts/dimy-history.mjs"
+    "history": "node scripts/dimy-history.mjs",
+    "maint": "node scripts/maint.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -89,6 +89,12 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
   3. 日本語で短く報告する（なければ「問題なし」）: error になった発言と理由／同じ返事を 2 回読んだ・同じ発言が続いた・自分の声を拾ったような発言／「開けません」「道具がありません」など、できるはずのことを断った返事／PC への命令の失敗／常駐プログラムの記録のエラー・警告。
   4. 問題があれば原因の見当と直し方を提案する。コードを書き換えるのは利用者が「直して」と言ってから。直したら `npm test` と `npm run build` を通し、利用者に確かめて main に push する。
 
+## クラウドのセッションから DIMY を見る・再起動する（保守の窓口）
+- `supabase/migrations/20261115500000_maintenance.sql` の窓口で、クラウドの開発用セッションからも記録を読み、PC の DIMY に再起動（最新版の取り込み）を頼める。できるのは「読む」と「再起動を頼む」だけ。
+- 使い方: `npm run maint -- read messages 50`（会話）／`read agent_logs 100`（PC の DIMY の記録）／`read activity_log`（画面の動作）／`read pc_commands`（PC への命令）／`read pc_state`（Chrome のプロフィールなど）／`npm run maint -- restart`（再起動を頼んで結果を待つ）。
+- 必要なもの: 環境変数 `DIMY_MAINT_URL`（Supabase の URL）と `DIMY_MAINT_ANON`（publishable キー。秘密ではない）、合言葉（見出し `dimy-maint-key`。クラウドの環境の「ネットワークの秘密」に保存し、通信のときに自動で付く。リポジトリやチャットには書かない）。合言葉は SQL Editor で `select public.dimy_maint_new_key('メモ');` を実行して作る。無効にするときは `delete from public.maintenance_keys;`。
+- 利用者から DIMY の不具合を相談されたら、クラウドのセッションでも、まずこれで記録を読んでから答える。直して main に push したら `npm run maint -- restart` で PC の DIMY に最新版を取り込ませ、記録で直ったかを確かめる。
+
 ## DIMY の開発は PC の dev のセッションで行う（利用者の決まり）
 - DIMY の開発・不具合の確認・修正は、デスクトップ PC の `C:\Users\sike1\dev\dimy` で動く Claude Code のセッション（Remote Control の「dev」を含む）で、1 つのセッションのまま続ける。ここなら、コード・本番の記録（`npm run history`）・PC の DIMY が全部そろう。
 - セッションを始めたら、最初に `git pull` で最新にする（クラウドのセッションなど、ほかの場所で変えたものを取り込むため）。
