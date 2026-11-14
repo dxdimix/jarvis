@@ -41,6 +41,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 ## 開発用フォルダ（利用者の決まり）
 - 利用者のアプリ・システムは、デスクトップ PC の `C:\Users\sike1\dev\<アプリ名>` にすべて置く。新しく作るときも必ずここ。このフォルダは Remote Control に登録してあり、ノート・iPhone からも作業できる。
 - ディミはこの dev フォルダの直下を見て、アプリの一覧と状況を把握する（固定の一覧に頼らない）。各アプリの CLAUDE.md に「何をするか・どこで動くか・記録の場所」を書いてもらう。
+- 利用者の決まり: これから作るアプリは、すべて DIMY と連携する前提で作る（URL は 〇〇.dxdimix.com、DIMY の中への表示を禁止しない、DIMY のアプリ一覧に追加など）。詳しくは `windows/dev-CLAUDE.md` の「DIMY との連携」。
 - 見張りの対象と「何を見てよいか」の決まりは `docs/monitoring.md`（利用者に確認したことだけを書く）。
 - 決まりの文章は `windows/dev-CLAUDE.md`。`setup-dev-windows.ps1` が `dev\CLAUDE.md` に置き、`~\.claude\CLAUDE.md` に短い決まりを足す（印で囲んだ部分だけを入れ替える）。
 - `C:\Users\sike1\dimy` は自動更新される本体。ディミの開発は `dev\dimy` で行う。
