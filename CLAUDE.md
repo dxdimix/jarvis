@@ -85,6 +85,12 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
   3. 日本語で短く報告する（なければ「問題なし」）: error になった発言と理由／同じ返事を 2 回読んだ・同じ発言が続いた・自分の声を拾ったような発言／「開けません」「道具がありません」など、できるはずのことを断った返事／PC への命令の失敗／常駐プログラムの記録のエラー・警告。
   4. 問題があれば原因の見当と直し方を提案する。コードを書き換えるのは利用者が「直して」と言ってから。直したら `npm test` と `npm run build` を通し、利用者に確かめて main に push する。
 
+## DIMY の開発は PC の dev のセッションで行う（利用者の決まり）
+- DIMY の開発・不具合の確認・修正は、デスクトップ PC の `C:\Users\sike1\dev\dimy` で動く Claude Code のセッション（Remote Control の「dev」を含む）で、1 つのセッションのまま続ける。ここなら、コード・本番の記録（`npm run history`）・PC の DIMY が全部そろう。
+- セッションを始めたら、最初に `git pull` で最新にする（クラウドのセッションなど、ほかの場所で変えたものを取り込むため）。
+- 流れ: 記録を見る（`npm run history`）→ 原因を見つけて直し方を提案 → 利用者が「直して」と言ったら直す → `npm test` と `npm run build` → 利用者に確かめて main に push → `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\sike1\dimy\windows\restart-dimy.ps1` で PC の DIMY を再起動（すぐ新しい版を取り込む）→ 1〜2 分後に `npm run history` で直ったかを確かめる。
+- 画面（Vercel）の変更は、push してから 1〜2 分で公開される。利用者には「画面を Ctrl + Shift + R で読み込み直してください」と伝える。
+
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。
 - Google の OAuth の鍵（`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`）は Vercel の環境変数と PC の `.env.local` に置く。リポジトリや画面のコードには入れない。
