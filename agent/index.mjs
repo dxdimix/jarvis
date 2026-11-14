@@ -357,6 +357,8 @@ try {
   if (data.users.length === 1) {
     const owner = data.users[0];
     process.env.DIMY_OWNER_ID = owner.id;
+    // 開くアカウントを言わなかったときは、このメールアドレスの Chrome のプロフィール（マスターアカウント）で開く
+    if (owner.email) process.env.DIMY_OWNER_EMAIL = owner.email;
     logOwnerId = owner.id;
     // Chrome のブックマークを写す（利用者のメールアドレスでログインしている Chrome のプロフィールから）
     if (owner.email && process.env.DIMY_BOOKMARKS !== "off") startBookmarkSync({ supabase, userId: owner.id, email: owner.email, log });

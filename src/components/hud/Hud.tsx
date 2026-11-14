@@ -70,7 +70,7 @@ const VOICE_KEY = "dimy.voice";
 const RATE_KEY = "dimy.rate"; // 話す速さ
 const PITCH_KEY = "dimy.pitch"; // 声の高さ
 const VOLUME_KEY = "dimy.volume"; // ディミの声の大きさ（PC 全体の音量とは別）
-const ACCOUNT_KEY = "dimy.account"; // ディミの外（Chrome）で開くときの、いつものアカウントの番号
+const SITE_ACCOUNTS_KEY = "dimy.siteAccounts"; // サイトごとに開く Chrome のプロフィール（{ サイト名: プロフィールのフォルダ名 }。"*" は指定がないとき）
 const SILENCE_KEY = "dimy.silenceSec"; // 話し終わりとみなすまでの無音の時間（秒）
 const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
 const HOTKEY_KEY = "dimy.hotkey"; // 右 Ctrl を 2 回で話すか
@@ -292,31 +292,39 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const localCommandRef = useRef<(text: string) => Promise<boolean>>(async () => false);
   const openOutsideRef = useRef<(url: string, title: string, account: number | null) => Promise<void>>(async () => {});
   const accountNamesRef = useRef<Record<number, string>>({});
-  const handleUtterance = useCallback(
-      async (text: string) => {
+  // 画面と PC だけで済ませる（声でも、会話の欄に文字で打っても同じ）。済ませたら true
+  const handleLocal = useCallback(
+      async (text: string): Promise<boolean> => {
         setError("");
-        logActivity(supabase, "voice", text);
         // 検索・Chrome で開く・Claude のセッション・ウィンドウを移す、は画面と PC で済ませる（下の localCommandRef）
-        if (await localCommandRef.current(text)) return;
+        if (await localCommandRef.current(text)) return true;
         // 「〇〇を開いて」は、ディミに聞かずにこの画面ですぐ開く
         const app = detectOpenCommand(text);
         if (app) {
           const ok = openApp(app.id);
           logActivity(supabase, ok ? "open_app" : "error", ok ? app.name : `${app.name} を開けませんでした（ブラウザに止められた）`);
           announce(ok ? `${app.name}を開きます` : `ブラウザに止められました。左のアイコンから${app.name}を開いてください`);
-          return;
+          return true;
         }
         // アプリの一覧になければ、Chrome のブックマークから探して、別のタブで開く
         const acc = extractAccount(text, accountNamesRef.current);
         const bm = matchBookmark(acc.rest, bookmarksRef.current);
         if (bm) {
           await openOutsideRef.current(bm.url, bm.title, acc.account);
-          return;
+          return true;
         }
-        const { error } = await supabase.from("messages").insert({ role: "user", content: text });
-        if (error) setError(`送信できませんでした: ${error.message}`);
+        return false;
       },
       [supabase, announce, openApp],
+  );
+  const handleUtterance = useCallback(
+    async (text: string) => {
+      logActivity(supabase, "voice", text);
+      if (await handleLocal(text)) return;
+      const { error } = await supabase.from("messages").insert({ role: "user", content: text });
+      if (error) setError(`送信できませんでした: ${error.message}`);
+    },
+    [supabase, handleLocal],
   );
   const recognition = useSpeechRecognition(handleUtterance, { silenceMs: silenceSec * 1000 });
 
@@ -437,11 +445,21 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
   // PC の情報（Chrome のプロフィール＝アカウント、PC の Claude Code のセッション）
   const [pcState, setPcState] = useState<PcState | null>(null);
-  const [defaultAccount, setDefaultAccount] = useState(1);
+  // サイトごとのアカウント（設定の「アカウント」タブで決める。決めていなければマスターアカウント）
+  const [siteAccounts, setSiteAccounts] = useState<Record<string, string>>({});
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDefaultAccount(loadNumber(ACCOUNT_KEY, 1));
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSiteAccounts(JSON.parse(load(SITE_ACCOUNTS_KEY) ?? "{}"));
+    } catch {}
   }, []);
+  const setSiteAccount = (site: string, dir: string | null) => {
+    const next = { ...siteAccounts };
+    if (dir) next[site] = dir;
+    else delete next[site];
+    setSiteAccounts(next);
+    save(SITE_ACCOUNTS_KEY, JSON.stringify(next));
+  };
   const refreshPcState = useCallback(() => {
     loadPcState(supabase).then((st) => st && setPcState(st));
   }, [supabase]);
@@ -451,13 +469,21 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     return () => clearInterval(t);
   }, [refreshPcState]);
 
-  /** ディミの外（Chrome）で開く。PC が動いていれば、指定のアカウント（Chrome のプロフィール）で PC が開く */
-  async function openOutside(url: string, title: string, account: number | null) {
-    const n = account ?? defaultAccount;
-    logActivity(supabase, "open_chrome", `${title} ${url}（アカウント${n}）`);
+  /**
+   * ディミの外（Chrome）で開く。PC が動いていれば PC が Chrome で開く。開くアカウント（Chrome のプロフィール）は:
+   * 言葉で指定（「アカウント2で」）→ 設定のサイトごとのアカウント → 設定の「指定がないとき」→ マスターアカウント（PC が決める）
+   */
+  async function openOutside(url: string, title: string, account: number | null, site?: string) {
+    const profile = account ? undefined : (site && siteAccounts[site]) || siteAccounts["*"];
+    const who = account
+      ? `アカウント${account}`
+      : profile
+        ? (pcState?.chrome_profiles.find((p) => p.dir === profile)?.name ?? profile)
+        : "マスターアカウント";
+    logActivity(supabase, "open_chrome", `${title} ${url}（${who}）`);
     if (online) {
       announce(`${title}を開きます`);
-      const r = await sendPcCommand(supabase, "open_url", { url, account: n });
+      const r = await sendPcCommand(supabase, "open_url", { url, ...(account ? { account } : profile ? { profile } : {}) });
       if (r.ok) return;
       if (r.sent) return announce(r.result || "PC で開けませんでした");
       // 表がまだないなど、PC に送れなかったときは、このブラウザで開く
@@ -501,13 +527,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     if (br.chrome || acc0.account !== null) {
       const app = detectOpenCommand(acc0.rest);
       if (app) {
-        await openOutside(app.url, app.name, acc0.account);
+        await openOutside(app.url, app.name, acc0.account, app.name);
         return done();
       }
     }
     const site = parseOpenSite(acc0.rest);
     if (site) {
-      await openOutside(site.url, site.name, acc0.account);
+      await openOutside(site.url, site.name, acc0.account, site.name);
       return done();
     }
     text = br.rest;
@@ -519,7 +545,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     }
     const sc = parseSearchCommand(text, names);
     if (sc) {
-      await openOutside(searchUrl(sc), `${sc.site === "youtube" ? "YouTube" : "Google"}で「${sc.query}」`, sc.account);
+      await openOutside(searchUrl(sc), `${sc.site === "youtube" ? "YouTube" : "Google"}で「${sc.query}」`, sc.account, sc.site === "youtube" ? "YouTube" : "Google");
       return done();
     }
     const ss = parseSessionCommand(extractAccount(text, names).rest);
@@ -538,7 +564,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       // claude.ai のチャットと Code のセッションは、名前で探す手段がないので、一覧の画面を開く
       const url = ss.kind === "chat" ? "https://claude.ai/recents" : "https://claude.ai/code";
       if (ss.query) announce(`PC のセッションに「${ss.query}」が見つからないので、claude.ai の一覧を開きます`);
-      await openOutside(url, ss.kind === "chat" ? "Claude のチャットの一覧" : "Claude Code のセッションの一覧", acc);
+      await openOutside(url, ss.kind === "chat" ? "Claude のチャットの一覧" : "Claude Code のセッションの一覧", acc, "Claude");
       return done();
     }
     return false;
@@ -922,11 +948,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           wakeOn={wakeOn}
           setWakeOn={changeWake}
           profiles={pcState?.chrome_profiles ?? null}
-          defaultAccount={defaultAccount}
-          setDefaultAccount={(n) => {
-            setDefaultAccount(n);
-            save(ACCOUNT_KEY, String(n));
-          }}
+          masterEmail={session.user.email ?? ""}
+          siteAccounts={siteAccounts}
+          setSiteAccount={setSiteAccount}
           onRefreshProfiles={refreshPcState}
           online={online}
           onRestartPc={async () => {
@@ -988,7 +1012,17 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             <CloseIcon className="h-6 w-6" />
           </button>
         </div>
-        <div className="min-h-0 flex-1">{panel === "chat" && <Chat supabase={supabase} session={session} embedded />}</div>
+        <div className="min-h-0 flex-1">{panel === "chat" && (
+            <Chat
+              supabase={supabase}
+              session={session}
+              embedded
+              onLocalCommand={async (t) => {
+                logActivity(supabase, "voice", `（文字）${t}`);
+                return handleLocal(t);
+              }}
+            />
+          )}</div>
       </aside>
     </div>
   );

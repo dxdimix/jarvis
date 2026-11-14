@@ -52,8 +52,9 @@ export type SettingsProps = {
   setHotkeyOn: (v: boolean) => void;
   // アカウント
   profiles: ChromeProfile[] | null;
-  defaultAccount: number;
-  setDefaultAccount: (n: number) => void;
+  masterEmail: string;
+  siteAccounts: Record<string, string>;
+  setSiteAccount: (site: string, dir: string | null) => void;
   onRefreshProfiles: () => void;
   // 再起動
   online: boolean | null;
@@ -269,36 +270,65 @@ function DisplayTab(p: SettingsProps) {
   );
 }
 
+// サイトごとに開くアカウントを決められるもの（"*" は、どれにも当てはまらないとき：ブックマークなど）
+const ACCOUNT_SITES = ["YouTube", "Google", "Gmail", "Google カレンダー", "Google ドライブ", "Google マップ", "Amazon", "X", "Claude", "*"];
+
 function AccountTab(p: SettingsProps) {
+  const isMaster = (email: string) => Boolean(email) && email.toLowerCase() === p.masterEmail.toLowerCase();
+  const master = p.profiles?.find((pr) => isMaster(pr.email));
   return (
     <>
       <p className="text-xs leading-relaxed text-slate-400">
-        ディミの外（Chrome）で開くもの（YouTube・Google の検索、ブックマーク、Claude など）は、PC のディミが Chrome で開きます。
-        「アカウント2で YouTube で〇〇と検索」のように言うと、2 番目の Chrome のプロフィールで開きます。プロフィールの名前（例: 「個人のアカウントで」）でも呼べます。
+        DIMY の外（Chrome）で開くもの（YouTube、Google の検索、ブックマーク、Claude など）は、PC の DIMY が Chrome で開きます。
+        アカウントを言わなかったときは、ここで決めたアカウントで開きます。決めていなければ<span className="text-cyan-200">マスターアカウント</span>
+        {master ? `（${master.name}・${master.email}）` : ""}で開きます。
       </p>
       {p.profiles === null ? (
-        <p className="text-slate-400">PC の情報がまだ届いていません（PC のディミが動いていて、データベースの更新が済んでいれば、数分で出ます）。</p>
+        <p className="text-slate-400">PC の情報がまだ届いていません（PC の DIMY が動いていれば、数分で出ます）。</p>
       ) : (
-        <div className="space-y-1.5">
-          {p.profiles.map((pr, i) => (
-            <label key={pr.dir} className="flex cursor-pointer items-center gap-3 rounded border border-cyan-400/20 px-3 py-2 hover:bg-cyan-400/5">
-              <input
-                type="radio"
-                name="dimy-account"
-                checked={p.defaultAccount === i + 1}
-                onChange={() => p.setDefaultAccount(i + 1)}
-                className="accent-cyan-400"
-              />
-              <span className="w-24 shrink-0 font-mono text-xs text-cyan-300">アカウント{i + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-cyan-100">{pr.name}</span>
-              <span className="truncate text-xs text-slate-400">{pr.email}</span>
-            </label>
-          ))}
-          <p className="text-xs text-slate-400">印を付けたアカウントが、指定しないときのアカウントです。</p>
-        </div>
+        <>
+          <div>
+            <div className="mb-1.5 text-cyan-100">Chrome のアカウント（プロフィール）</div>
+            <div className="space-y-1">
+              {p.profiles.map((pr, i) => (
+                <div key={pr.dir} className="flex items-center gap-3 rounded border border-cyan-400/15 px-3 py-1.5 text-xs">
+                  <span className="w-20 shrink-0 font-mono text-cyan-300">アカウント{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-cyan-100">{pr.name}</span>
+                  <span className="truncate text-slate-400">{pr.email || "（ログインなし）"}</span>
+                  {isMaster(pr.email) && <span className="shrink-0 rounded bg-cyan-400/15 px-1.5 text-[10px] text-cyan-200">マスター</span>}
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">「アカウント2で YouTube を開いて」のように言うと、言ったアカウントで開きます。</p>
+          </div>
+          <div>
+            <div className="mb-1.5 text-cyan-100">サイトごとに開くアカウント</div>
+            <div className="space-y-1">
+              {ACCOUNT_SITES.map((site) => (
+                <label key={site} className="flex items-center gap-3 text-xs">
+                  <span className="w-40 shrink-0 text-cyan-100">{site === "*" ? "それ以外（ブックマークなど）" : site}</span>
+                  <select
+                    value={p.siteAccounts[site] ?? ""}
+                    onChange={(e) => p.setSiteAccount(site, e.target.value || null)}
+                    className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
+                  >
+                    <option value="">{site === "*" ? "マスターアカウント" : "指定なし（「それ以外」と同じ）"}</option>
+                    {p.profiles!.map((pr, i) => (
+                      <option key={pr.dir} value={pr.dir}>
+                        アカウント{i + 1}：{pr.name}
+                        {pr.email ? `（${pr.email}）` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">YouTube・Google の検索も、ここで決めたアカウントで開きます。この設定は、この端末のブラウザに保存されます。</p>
+          </div>
+        </>
       )}
       <p className="text-xs leading-relaxed text-slate-400">
-        アカウントを増やすには、PC の Chrome の右上の人のアイコン →「プロフィールを追加」で、別のアカウントにログインしておいてください。番号は Chrome のプロフィールの並び順です。
+        アカウントを増やすには、PC の Chrome の右上の人のアイコン →「プロフィールを追加」で、別のアカウントにログインしておいてください。
       </p>
       <button onClick={p.onRefreshProfiles} className="rounded border border-cyan-500/50 px-4 py-1.5 text-cyan-200 hover:bg-cyan-400/10">
         読み直す

@@ -48,3 +48,24 @@ describe("runCommand", () => {
     await expect(runCommand({ kind: "open_session", payload: { id: "x & del" } }, { log: () => {} })).rejects.toThrow("形");
   });
 });
+
+import { pickProfile } from "../agent/lib/pc.mjs";
+
+describe("開く Chrome のプロフィール", () => {
+  const profiles = [
+    { dir: "Default", name: "ゲスト", email: "" },
+    { dir: "Profile 1", name: "仕事", email: "boss@example.com" },
+    { dir: "Profile 2", name: "個人", email: "me@gmail.com" },
+  ];
+  it("指定がなければマスターアカウント（利用者のメールアドレスのプロフィール）", () => {
+    expect(pickProfile(profiles, {}, "Boss@example.com").dir).toBe("Profile 1");
+  });
+  it("番号・フォルダ名の指定が先", () => {
+    expect(pickProfile(profiles, { account: 3 }, "boss@example.com").dir).toBe("Profile 2");
+    expect(pickProfile(profiles, { profile: "Default" }, "boss@example.com").dir).toBe("Default");
+  });
+  it("ない番号はエラー、ないフォルダ名はマスターアカウント", () => {
+    expect(() => pickProfile(profiles, { account: 9 }, "boss@example.com")).toThrow("アカウント 9");
+    expect(pickProfile(profiles, { profile: "Profile 9" }, "boss@example.com").dir).toBe("Profile 1");
+  });
+});

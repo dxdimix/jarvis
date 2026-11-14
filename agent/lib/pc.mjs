@@ -106,6 +106,29 @@ export function profilesNow() {
   }
 }
 
+/**
+ * 開く Chrome のプロフィールを決める。
+ * profile（フォルダ名）の指定 → account（番号）の指定 → マスターアカウント（利用者のメールアドレスのプロフィール）→ 1 番目
+ */
+export function pickProfile(profiles, { profile, account }, masterEmail = process.env.DIMY_OWNER_EMAIL || "") {
+  if (!profiles.length) throw new Error("Chrome のプロフィールが見つかりません。");
+  const label = (p) => `${p.name}${p.email ? `（${p.email}）` : ""}`;
+  if (profile) {
+    const found = profiles.find((p) => p.dir === profile);
+    if (found) return { ...found, label: label(found) };
+  }
+  if (account) {
+    const n = Number(account);
+    const found = profiles[n - 1];
+    if (!found) throw new Error(`アカウント ${n} の Chrome のプロフィールがありません（Chrome のプロフィールは ${profiles.length} 個です）。`);
+    return { ...found, label: `アカウント ${n}：${label(found)}` };
+  }
+  const want = masterEmail.trim().toLowerCase();
+  const master = want && profiles.find((p) => p.email.toLowerCase() === want);
+  const chosen = master || profiles[0];
+  return { ...chosen, label: `${master ? "マスターアカウント" : "アカウント 1"}：${label(chosen)}` };
+}
+
 /** 命令を 1 件実行する。結果の文（画面に出す）を返す。失敗したら例外 */
 export async function runCommand(cmd, { log }) {
   if (cmd.kind === "open_url") {
@@ -119,13 +142,10 @@ export async function runCommand(cmd, { log }) {
     if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("http / https の URL だけを開けます。");
     const exe = findChromeExe();
     if (!exe) throw new Error("この PC に Chrome が見つかりません。");
-    const profiles = profilesNow();
-    const n = Number(cmd.payload?.account) || 1;
-    const profile = profiles[n - 1];
-    if (!profile) throw new Error(`アカウント ${n} の Chrome のプロフィールがありません（Chrome のプロフィールは ${profiles.length} 個です）。`);
+    const profile = pickProfile(profilesNow(), cmd.payload ?? {});
     spawn(exe, [`--profile-directory=${profile.dir}`, u.toString()], { detached: true, stdio: "ignore", windowsHide: false }).unref();
-    log(`Chrome（アカウント ${n}: ${profile.name}）で開きました: ${u.hostname}`);
-    return `アカウント ${n}（${profile.name}）で開きました`;
+    log(`Chrome（${profile.label}）で開きました: ${u.hostname}`);
+    return `${profile.label}で開きました`;
   }
   if (cmd.kind === "open_session") {
     const id = String(cmd.payload?.id ?? "");

@@ -41,10 +41,13 @@ export function Chat({
   supabase,
   session,
   embedded = false,
+  onLocalCommand,
 }: {
   supabase: SupabaseClient;
   session: Session;
   embedded?: boolean;
+  /** 「YouTube を開いて」など、画面だけで済ませる命令を先に受け取る（済ませたら true。PC の Claude には送らない） */
+  onLocalCommand?: (text: string) => Promise<boolean>;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   // 返事への評価（message_id → 評価）。表がまだない場合は、評価のボタンを出さない
@@ -72,6 +75,7 @@ export function Chat({
       const content = text.trim();
       if (!content) return false;
       setError("");
+      if (onLocalCommand && (await onLocalCommand(content))) return true;
       const { error } = await supabase
         .from("messages")
         .insert({ role: "user", content });
@@ -81,7 +85,7 @@ export function Chat({
       }
       return true;
     },
-    [supabase],
+    [supabase, onLocalCommand],
   );
 
   const recognition = useSpeechRecognition((text) => {

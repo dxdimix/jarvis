@@ -66,7 +66,7 @@ export const TOOLS = [
     description:
       "利用者の PC の Chrome で、ページを開く（YouTube、Google の検索、ニュース、買い物のサイトなど、http / https の URL ならどれでも）。" +
       "「開いて」「見せて」「検索して」「再生して」と頼まれたら、この道具で開く。検索なら検索結果の URL（例: https://www.youtube.com/results?search_query=…、https://www.google.com/search?q=…）を作って開く。" +
-      "account はアカウントの番号（「アカウント2で」と言われたら 2。指定がなければ省く＝いつものアカウント）。",
+      "account はアカウントの番号（「アカウント2で」と言われたら 2。指定がなければ省く＝マスターアカウント）。",
     inputSchema: {
       type: "object",
       properties: {
@@ -75,7 +75,7 @@ export const TOOLS = [
       },
       required: ["url"],
     },
-    call: (a) => runCommand({ kind: "open_url", payload: { url: a.url, account: a.account ?? Number(process.env.DIMY_DEFAULT_ACCOUNT || 1) } }, { log: noLog }),
+    call: (a) => runCommand({ kind: "open_url", payload: { url: a.url, ...(a.account ? { account: a.account } : {}) } }, { log: noLog }),
   },
   {
     name: "claude_sessions",
