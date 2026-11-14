@@ -1,14 +1,16 @@
 // 呼びかけ（「ディミ」）と、終わりの合図の判定。聞き取った文字だけを見る。
 
-// 「ディミ」の聞き間違えも、呼びかけとして受け付ける（使いながら足していく）
-const WAKE = /^(ねぇ|ねえ|ねー|おい|ヘイ|hey)?[、,\s]*(ディミー?|でぃみー?|ディミィ|ディーミ|でぃーみ|ディム|ディミ|リミ|りみ|デミ|でみ|dimy|dimi|demi)(さん|ちゃん)?[、,。.!！?？\s]*/i;
+// 「ディミ」の聞き間違えも、呼びかけとして受け付ける（使いながら足していく）。
+// 短い言葉は前後に別の言葉が付いて聞き取られることがあるので、文の頭でなくても見つける。
+const WAKE =
+  /(ねぇ|ねえ|ねー|おい|ヘイ|hey)?[、,\s]*(ディーミー|ディーミ|ディミー|ディミィ|ディミ|でぃーみ|でぃみー?|ディム|ティミー?|ジミー|ジミ|じみー?|デミー?|リミ|りみ|dimy|dimi|dimmy|demi|jimmy|timmy)(さん|ちゃん)?[、,。.!！?？\s]*/i;
 
 /** 呼びかけで始まっていれば、そのあとの言葉（呼びかけだけなら空文字）。呼びかけでなければ null */
 export function parseWake(text: string): string | null {
   const t = text.trim();
-  const m = t.match(WAKE);
+  const m = WAKE.exec(t);
   if (!m) return null;
-  return t.slice(m[0].length).trim();
+  return t.slice(m.index + m[0].length).trim();
 }
 
 export type Control = "end" | "mute" | "cancel";

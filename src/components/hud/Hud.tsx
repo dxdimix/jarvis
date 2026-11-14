@@ -16,6 +16,7 @@ import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWakeWord } from "@/hooks/useWakeWord";
+import { useActiveDevice } from "@/hooks/useActiveDevice";
 import { toSpeech } from "@/lib/wake";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
@@ -109,6 +110,8 @@ function useWeather(place: Place | null) {
 
 export function Hud({ supabase, session }: { supabase: SupabaseClient; session: Session }) {
   const online = useAgentOnline(supabase);
+  // ディミの画面が複数開いているときは、最後に操作した画面だけが話す・聞く
+  const { leader: isLeader, leaderRef } = useActiveDevice(supabase);
   const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
   const [panel, setPanel] = useState<"none" | "chat" | "settings" | "bookmarks" | "pin" | "palette">("none");
@@ -221,9 +224,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const announce = useCallback(
     (text: string) => {
       setNotice({ text, until: Date.now() + 6000 });
-      if (speakOn) speak(toSpeech(text));
+      if (speakOn && leaderRef.current) speak(toSpeech(text));
     },
-    [speak, speakOn],
+    [speak, speakOn, leaderRef],
   );
 
   // 話しかけられた内容の扱い（マイクのボタンでも、呼びかけでも同じ）
@@ -256,7 +259,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
   // 「ディミ」と呼ばれたときだけ反応する聞き取り
   const wake = useWakeWord({
-    enabled: wakeOn,
+    enabled: wakeOn && isLeader,
     speaking: speaker.speaking || recognition.listening,
     followMs: followSec * 1000,
     volume: speaker.volume,
@@ -299,7 +302,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       const from = spokenUpTo.current.get(m.id) ?? 0;
       const { chunk, next } = takeSpeakable(m.content, from, final, from === 0 ? 0 : 40);
       spokenUpTo.current.set(m.id, next);
-      if (speakOn && chunk) speak(toSpeech(chunk));
+      if (speakOn && chunk && leaderRef.current) speak(toSpeech(chunk));
       if (final) {
         liveIds.current.delete(m.id);
         // 呼びかけを待つ設定なら、言い終えたあと 8 秒は続けて話せるようにする
@@ -311,7 +314,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         setCaptionUntil(Date.now() + captionSec * 1000);
       }
     }
-  }, [messages, speak, speakOn, wakeOn, captionSec]);
+  }, [messages, speak, speakOn, wakeOn, captionSec, leaderRef]);
 
   // 画面を消さない（ずっと表示しておくため）。対応していないブラウザでは何もしない。
   useEffect(() => {
@@ -385,13 +388,14 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         // スマホなど、指で操作する端末では反応しない（PC で押したキーでスマホが聞き始めないように）
         if (window.matchMedia("(pointer: coarse)").matches) return;
         if (!hotkeyRef.current) return; // 設定でオフにしている
+        if (!leaderRef.current) return; // ほかの画面が担当（最後に操作した画面だけが反応する）
         onMicRef.current();
       })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [supabase, leaderRef]);
 
   // 設定の画面を閉じる（Esc で閉じるときに使うので、毎回同じ関数にする）
   const closePanel = useCallback(() => setPanel("none"), []);
@@ -438,7 +442,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       {/* 中央：球体とリング */}
       <div className="absolute inset-0 grid place-items-center">
         <div className="aspect-square w-[min(62vmin,640px)]">
-          <Ring mode={mode} tone={tone} />
+          <Ring mode={mode} tone={tone} waiting={wakeOn && isLeader && wake.state === "standby"} />
         </div>
       </div>
 
@@ -622,6 +626,14 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             speaker.speak("はい、ディミです。この速さで話します。");
           }}
           wakeSupported={wake.supported}
+          wakeStatus={
+            !wakeOn
+              ? "オフ"
+              : !isLeader
+                ? "ほかの画面が担当しています（この画面をクリックすると、この画面が聞きます）"
+                : wake.error || (wake.running ? "聞いています" : "聞き取りを始めています…")
+          }
+          wakeLastHeard={wake.lastHeard}
           wakeOn={wakeOn}
           setWakeOn={changeWake}
           followSec={followSec}

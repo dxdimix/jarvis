@@ -17,6 +17,7 @@ export type Recognition = {
   onresult: ((e: RecognitionResultEvent) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onstart?: (() => void) | null;
 };
 export type RecognitionConstructor = new () => Recognition;
 

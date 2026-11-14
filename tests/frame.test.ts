@@ -30,3 +30,20 @@ describe("droppedUrl / toUrl", () => {
     expect(toUrl("こんにちは")).toBeNull();
   });
 });
+
+import { clampZoom, wheelZoom, zoomAt } from "../src/lib/pins";
+
+describe("縮尺（Ctrl + ホイール）", () => {
+  it("ホイールを手前に回すと縮み、奥へ回すと大きくなる。範囲は 25%〜400%", () => {
+    expect(wheelZoom(1, -100)).toBeGreaterThan(1);
+    expect(wheelZoom(1, 100)).toBeLessThan(1);
+    expect(clampZoom(10)).toBe(4);
+    expect(clampZoom(0.01)).toBe(0.25);
+  });
+  it("カーソルの下の点は動かない", () => {
+    const v = zoomAt({ z: 1, x: 0, y: 0 }, 2, 100, 50);
+    // 縮尺を変える前に (100,50) にあった点は、変えたあとも (100,50) に見える
+    expect(100 * v.z + v.x).toBe(100);
+    expect(50 * v.z + v.y).toBe(50);
+  });
+});

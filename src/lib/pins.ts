@@ -23,7 +23,43 @@ export type Pin = {
   blocked?: boolean;
   /** 読み込み直した回数（変わるとページを読み込み直す） */
   rev?: number;
+  /** ウィンドウの中身の縮尺（1 = 100%）。Ctrl + ホイールで変える */
+  zoom?: number;
+  /** 映像を拡大するときの中心（中身の左上からの割合、0〜100） */
+  zoomOrigin?: { x: number; y: number };
 };
+
+/** 置き場所全体の縮尺と位置（パレットで Ctrl + ホイール・背景のドラッグ） */
+export type BoardView = { z: number; x: number; y: number };
+export const DEFAULT_VIEW: BoardView = { z: 1, x: 0, y: 0 };
+
+export function loadView(board: string): BoardView {
+  try {
+    const v = JSON.parse(localStorage.getItem("dimy.pinview." + board) ?? "null") as BoardView | null;
+    if (v && [v.z, v.x, v.y].every(Number.isFinite)) return v;
+  } catch {}
+  return DEFAULT_VIEW;
+}
+export function saveView(board: string, v: BoardView) {
+  try {
+    localStorage.setItem("dimy.pinview." + board, JSON.stringify(v));
+  } catch {}
+}
+
+export const ZOOM_MIN = 0.25;
+export const ZOOM_MAX = 4;
+export const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+
+/** ホイールの回し具合から、新しい縮尺を出す */
+export function wheelZoom(z: number, deltaY: number) {
+  return clampZoom(z * Math.exp(-deltaY * 0.0015));
+}
+
+/** 縮尺を変えるとき、カーソルの下の点が動かないように、置き場所の位置を直す */
+export function zoomAt(v: BoardView, z: number, cx: number, cy: number): BoardView {
+  const k = z / v.z;
+  return { z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
+}
 
 const PREFIX = "dimy.pins.";
 

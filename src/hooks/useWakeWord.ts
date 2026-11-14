@@ -29,6 +29,9 @@ export function useWakeWord(o: {
   const [state, setStateRaw] = useState<WakeState>("standby");
   const [interim, setInterim] = useState("");
   const [error, setError] = useState("");
+  // 確かめる用: 実際に聞き取りが動いているか・最後に聞こえた言葉（設定の画面に出す）
+  const [running, setRunning] = useState(false);
+  const [lastHeard, setLastHeard] = useState("");
   const stateRef = useRef<WakeState>("standby");
   const liveRef = useRef(""); // 聞き取り途中の文字（話し終わりの合図で、待たずに送るため）
   const wokeAt = useRef(0); // 呼ばれた時刻（自分の「はい」を聞き取ってしまったときに無視するため）
@@ -121,7 +124,10 @@ export function useWakeWord(o: {
       let live = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) handleFinal(r[0].transcript);
+        if (r.isFinal) {
+          setLastHeard(r[0].transcript);
+          handleFinal(r[0].transcript);
+        }
         else live += r[0].transcript;
       }
       liveRef.current = live;
@@ -131,15 +137,21 @@ export function useWakeWord(o: {
       // 待機中は、聞き取った文字を画面に出さない（周りの会話を出さないため）
       setInterim(stateRef.current === "command" || stateRef.current === "followup" ? live : "");
     };
+    rec.onstart = () => {
+      setRunning(true);
+      setError("");
+    };
     rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         setError("マイクの使用が許可されていません。アドレス欄の左のアイコンから、マイクを許可してください。");
         stopped = true;
         cb.current.onControl("mute");
-      }
+      } else if (e.error === "audio-capture") setError("マイクが見つかりません。");
+      else if (e.error === "network") setError("音声認識の通信に失敗しました（自動でやり直します）。");
     };
     // ブラウザは無音が続くと聞き取りを止めるので、自動で再開する
     rec.onend = () => {
+      setRunning(false);
       if (!stopped) setTimeout(() => !stopped && start(), 300);
     };
     const start = () => {
@@ -153,6 +165,7 @@ export function useWakeWord(o: {
       stopped = true;
       rec.onend = null;
       rec.abort();
+      setRunning(false);
       recRef.current = null;
     };
   }, [o.enabled, paused, handleFinal, wakeUp]);
@@ -175,6 +188,8 @@ export function useWakeWord(o: {
   const supported = typeof window !== "undefined" && getRecognitionClass() !== null;
   return {
     supported,
+    running,
+    lastHeard,
     state: (o.enabled && supported ? state : "off") as WakeState,
     interim,
     error,

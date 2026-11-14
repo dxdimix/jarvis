@@ -7,6 +7,8 @@ describe("parseWake", () => {
     expect(parseWake("ディミ")).toBe("");
     expect(parseWake("ねえディミ、FX を開いて")).toBe("FX を開いて");
     expect(parseWake("リミ 今日の天気は")).toBe("今日の天気は");
+    expect(parseWake("ジミー")).toBe("");
+    expect(parseWake("あディミ")).toBe(""); // 前に雑音が付いても見つける
   });
   it("呼びかけで始まらなければ null（周りの会話には反応しない）", () => {
     expect(parseWake("今日の夕飯どうする")).toBeNull();

@@ -8,7 +8,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { boardKey, boardLabel, knownBoards, loadPins, newPinId, savePins, sendPin, titleFromUrl, type Pin } from "@/lib/pins";
+import {
+  boardKey,
+  boardLabel,
+  DEFAULT_VIEW,
+  knownBoards,
+  loadPins,
+  loadView,
+  newPinId,
+  savePins,
+  saveView,
+  sendPin,
+  titleFromUrl,
+  wheelZoom,
+  zoomAt,
+  type BoardView,
+  type Pin,
+} from "@/lib/pins";
 import { droppedUrl } from "@/lib/frame";
 import { Bracket } from "@/components/hud/AppWindows";
 import { CaptureIcon, CloseIcon, ExternalIcon, LockIcon, PinIcon, ReloadIcon, SendIcon } from "@/components/hud/Icons";
@@ -33,6 +49,17 @@ function sameSite(url: string) {
 export function usePinBoard(board: string, session: Session) {
   const [pins, setPins] = useState<Pin[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // 置き場所全体の縮尺と位置（パレットだけで使う。メイン画面はいつも 100%）
+  const [view, setViewRaw] = useState<BoardView>(DEFAULT_VIEW);
+  const viewRef = useRef(view);
+  const setView = useCallback(
+    (v: BoardView) => {
+      viewRef.current = v;
+      setViewRaw(v);
+      saveView(board, v);
+    },
+    [board],
+  );
   // 映像（画面の共有）。保存はできないので、開いている間だけ持つ
   const [streams, setStreams] = useState<Record<string, MediaStream>>({});
   const streamsRef = useRef(streams);
@@ -43,6 +70,9 @@ export function usePinBoard(board: string, session: Session) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPins(loadPins(board));
+    const v = loadView(board);
+    viewRef.current = v;
+    setViewRaw(v);
     setLoaded(true);
     // ほかの画面（パレットなど）から送られてきたら読み直す
     const onStorage = (e: StorageEvent) => {
@@ -86,14 +116,18 @@ export function usePinBoard(board: string, session: Session) {
     [stopStream],
   );
 
+  // 画面の座標（at）を、置き場所の座標（縮尺と位置を戻したもの）にして、置く場所と大きさを決める
   const place = (at?: { x: number; y: number }, w = 640, h = 420) => {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const v = viewRef.current;
+    const vw = window.innerWidth / v.z;
+    const vh = window.innerHeight / v.z;
+    const left = -v.x / v.z;
+    const top = -v.y / v.z;
     w = Math.min(w, vw - 40);
     h = Math.min(h, vh - 40);
-    const cx = at?.x ?? vw / 2;
-    const cy = at?.y ?? vh / 2;
-    return { x: Math.max(0, Math.min(vw - w, cx - w / 2)), y: Math.max(0, Math.min(vh - h, cy - 16)), w, h };
+    const cx = at ? (at.x - v.x) / v.z : left + vw / 2;
+    const cy = at ? (at.y - v.y) / v.z : top + vh / 2;
+    return { x: Math.max(left, Math.min(left + vw - w, cx - w / 2)), y: Math.max(top, Math.min(top + vh - h, cy - 16)), w, h };
   };
 
   // 中に表示できるページかを調べる（できなければ、映像で映すように案内する）
@@ -175,7 +209,7 @@ export function usePinBoard(board: string, session: Session) {
     [pins],
   );
 
-  return { board, pins, streams, update, front, remove, addWeb, addCapture, send };
+  return { board, pins, streams, update, front, remove, addWeb, addCapture, send, view, setView };
 }
 
 export type PinBoardState = ReturnType<typeof usePinBoard>;
@@ -255,8 +289,65 @@ function Video({ stream }: { stream: MediaStream }) {
   return <video ref={ref} autoPlay muted playsInline className="h-full w-full bg-black object-contain" />;
 }
 
-export function PinBoard({ state, className = "" }: { state: PinBoardState; className?: string }) {
-  const { pins, streams, update, front, remove, addCapture, send, board } = state;
+/**
+ * zoomable: 置き場所全体の縮尺を変えられる（パレット）。Ctrl + ホイールで縮尺、背景のドラッグで動かす（背景のドラッグは Palette.tsx）。
+ * どの置き場所でも、ウィンドウの上で Ctrl + ホイールをすると、そのウィンドウの中身の縮尺だけが変わる。
+ */
+export function PinBoard({ state, className = "", zoomable = false }: { state: PinBoardState; className?: string; zoomable?: boolean }) {
+  const { pins, streams, update, front, remove, addCapture, send, board, view, setView } = state;
+  const v = zoomable ? view : DEFAULT_VIEW;
+
+  // Ctrl を押している間は、ページの上に透明な板を置いて、ホイールをディミが受け取る
+  // （ページの中（iframe）にホイールが届くと、ブラウザが画面全体を拡大してしまうため）
+  const [ctrl, setCtrl] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => e.key === "Control" && setCtrl(true);
+    const up = (e: KeyboardEvent) => e.key === "Control" && setCtrl(false);
+    const off = () => setCtrl(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
+
+  // Ctrl + ホイール: ウィンドウの上ならその中身、パレットの背景なら全体の縮尺を変える
+  const latest = useRef({ pins, view, zoomable, update, setView });
+  useEffect(() => {
+    latest.current = { pins, view, zoomable, update, setView };
+  });
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const L = latest.current;
+      const target = e.target as Element | null;
+      const el = target?.closest?.("[data-pin-id]") as HTMLElement | null;
+      if (el) {
+        const pin = L.pins.find((p) => p.id === el.dataset.pinId);
+        if (!pin) return;
+        e.preventDefault();
+        const z = wheelZoom(pin.zoom ?? 1, e.deltaY);
+        const patch: Partial<Pin> = { zoom: z };
+        // 映像はカーソルの位置を中心に拡大する
+        const content = el.querySelector("[data-pin-content]");
+        if (pin.kind === "capture" && content && (pin.zoom ?? 1) <= 1.001) {
+          const r = content.getBoundingClientRect();
+          patch.zoomOrigin = { x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 };
+        }
+        L.update(pin.id, patch);
+        return;
+      }
+      if (!L.zoomable) return; // メイン画面の背景では、ブラウザのいつもの動き
+      if (target?.closest?.("nav, [role=dialog], [data-no-board-zoom]")) return;
+      e.preventDefault();
+      L.setView(zoomAt(L.view, wheelZoom(L.view.z, e.deltaY), e.clientX, e.clientY));
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
   const action = useRef<{ id: string; dir: Dir; sx: number; sy: number; o: { x: number; y: number; w: number; h: number } } | null>(null);
   const [busy, setBusy] = useState(false); // 動かしている間は、中のページがマウスを横取りしないようにする
   const [sendMenu, setSendMenu] = useState<string | null>(null);
@@ -272,10 +363,11 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
   function move(e: React.PointerEvent) {
     const a = action.current;
     if (!a) return;
-    const dx = e.clientX - a.sx;
-    const dy = e.clientY - a.sy;
+    // 置き場所の縮尺を変えているときは、マウスの動きをその縮尺で割る
+    const dx = (e.clientX - a.sx) / v.z;
+    const dy = (e.clientY - a.sy) / v.z;
     const { o } = a;
-    if (a.dir === "move") return update(a.id, { x: Math.max(-o.w + 80, o.x + dx), y: Math.max(0, o.y + dy) });
+    if (a.dir === "move") return update(a.id, { x: o.x + dx, y: zoomable ? o.y + dy : Math.max(0, o.y + dy) });
     let { x, y, w, h } = o;
     if (a.dir.includes("e")) w = Math.max(MIN_W, o.w + dx);
     if (a.dir.includes("s")) h = Math.max(MIN_H, o.h + dy);
@@ -285,7 +377,7 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
     }
     if (a.dir.includes("n")) {
       h = Math.max(MIN_H, o.h - dy);
-      y = Math.max(0, o.y + (o.h - h));
+      y = o.y + (o.h - h);
     }
     update(a.id, { x, y, w, h });
   }
@@ -298,12 +390,15 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
     !pin.locked && <div onPointerDown={(e) => start(e, pin, dir)} onPointerMove={move} onPointerUp={end} className={"absolute " + cls} />;
 
   return (
-    <div className={"pointer-events-none fixed inset-0 " + className}>
+    <div className={"pointer-events-none fixed inset-0 overflow-hidden " + className}>
+      <div className="absolute left-0 top-0" style={{ transform: `translate(${v.x}px, ${v.y}px) scale(${v.z})`, transformOrigin: "0 0" }}>
       {pins.map((pin) => {
         const stream = streams[pin.id];
+        const zoom = pin.zoom ?? 1;
         return (
           <div
             key={pin.id}
+            data-pin-id={pin.id}
             style={{ left: pin.x, top: pin.y, width: pin.w, height: pin.h, zIndex: pin.z }}
             onPointerDown={() => front(pin.id)}
             className="dimy-win-in pointer-events-auto absolute drop-shadow-[0_0_18px_rgba(34,211,238,0.22)]"
@@ -324,6 +419,15 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
                 <span className="min-w-0 flex-1 truncate font-mono text-[10px] tracking-[0.15em] text-cyan-200/90" title={pin.url ?? pin.title}>
                   {pin.title}
                 </span>
+                {zoom !== 1 && (
+                  <button
+                    onClick={() => update(pin.id, { zoom: 1, zoomOrigin: undefined })}
+                    className="rounded-sm px-1 font-mono text-[10px] text-cyan-200 hover:bg-cyan-400/15"
+                    title="中身の縮尺を 100% に戻す"
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                )}
                 <button onClick={() => update(pin.id, { locked: !pin.locked })} className={btn} title={pin.locked ? "固定を外す" : "位置と大きさを固定"} aria-label="固定の切り替え">
                   <LockIcon className={"h-3.5 w-3.5 " + (pin.locked ? "text-cyan-100" : "")} open={!pin.locked} />
                 </button>
@@ -366,13 +470,15 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
               </div>
 
               {/* 中身 */}
-              <div className="relative min-h-0 flex-1">
+              <div data-pin-content className="relative min-h-0 flex-1 overflow-hidden">
                 {pin.kind === "web" && !pin.blocked && (
                   <iframe
                     key={`${pin.url}#${pin.rev ?? 0}`}
                     src={pin.url}
                     title={pin.title}
-                    className={"h-full w-full bg-white " + (busy ? "pointer-events-none" : "")}
+                    // 中身の縮尺: 大きさを縮尺で割ったページを、縮尺の分だけ拡大・縮小して見せる
+                    style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
+                    className={"block bg-white " + (busy ? "pointer-events-none" : "")}
                     allow="clipboard-read; clipboard-write; fullscreen"
                   />
                 )}
@@ -394,7 +500,12 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
                 )}
                 {pin.kind === "capture" &&
                   (stream ? (
-                    <Video stream={stream} />
+                    <div
+                      className="h-full w-full transition-transform duration-75"
+                      style={{ transform: `scale(${Math.max(1, zoom)})`, transformOrigin: `${pin.zoomOrigin?.x ?? 50}% ${pin.zoomOrigin?.y ?? 50}%` }}
+                    >
+                      <Video stream={stream} />
+                    </div>
                   ) : (
                     <div className="grid h-full place-items-center p-4 text-center text-xs text-slate-300">
                       <div className="space-y-3">
@@ -405,6 +516,8 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
                       </div>
                     </div>
                   ))}
+                {/* Ctrl を押している間だけ、ホイールを受け取る透明な板 */}
+                {ctrl && <div className="absolute inset-0 z-10 cursor-zoom-in" />}
               </div>
             </div>
 
@@ -422,6 +535,22 @@ export function PinBoard({ state, className = "" }: { state: PinBoardState; clas
           </div>
         );
       })}
+      </div>
     </div>
+  );
+}
+
+/** パレットの縮尺の表示と、100% に戻すボタン */
+export function BoardZoomBadge({ state }: { state: PinBoardState }) {
+  const { view, setView } = state;
+  if (view.z === 1 && view.x === 0 && view.y === 0) return null;
+  return (
+    <button
+      onClick={() => setView(DEFAULT_VIEW)}
+      className="h-10 rounded-full border border-cyan-400/25 bg-slate-950/60 px-3 font-mono text-xs text-cyan-200 backdrop-blur hover:border-cyan-300/70"
+      title="縮尺と位置を元に戻す"
+    >
+      {Math.round(view.z * 100)}%
+    </button>
   );
 }

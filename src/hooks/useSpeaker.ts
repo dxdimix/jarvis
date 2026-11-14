@@ -26,6 +26,8 @@ export function useSpeaker(
     initial.volume !== undefined && Number.isFinite(initial.volume) ? Math.min(1, Math.max(0, initial.volume)) : DEFAULT_VOLUME,
   );
   const queued = useRef(0);
+  // 読み上げ中の文を持っておく（持っていないと、Chrome が途中で捨てて「読み終わった」の知らせが来ないことがある）
+  const live = useRef(new Set<SpeechSynthesisUtterance>());
   // 読み上げ中かどうか（画面の動きに使う）
   const [speaking, setSpeaking] = useState(false);
   const onIdleRef = useRef(onIdle);
@@ -55,7 +57,9 @@ export function useSpeaker(
       u.volume = volume;
       queued.current++;
       setSpeaking(true);
+      live.current.add(u);
       const done = () => {
+        if (!live.current.delete(u)) return; // 同じ文の知らせが 2 回来たときは数えない
         queued.current = Math.max(0, queued.current - 1);
         if (queued.current === 0) {
           setSpeaking(false);
@@ -72,9 +76,28 @@ export function useSpeaker(
   const cancel = useCallback(() => {
     if (!supported) return;
     queued.current = 0;
+    live.current.clear();
     setSpeaking(false);
     window.speechSynthesis.cancel();
   }, [supported]);
+
+  // 見張り: ブラウザがもう何も読んでいないのに「読み上げ中」のままなら、読み終わったことにする
+  // （「読み上げ中」のままだと、呼びかけの聞き取りがずっと止まってしまうため）
+  useEffect(() => {
+    if (!supported || !speaking) return;
+    let quiet = 0;
+    const t = setInterval(() => {
+      const ss = window.speechSynthesis;
+      quiet = ss.speaking || ss.pending ? 0 : quiet + 1;
+      if (quiet >= 2 && queued.current > 0) {
+        queued.current = 0;
+        live.current.clear();
+        setSpeaking(false);
+        onIdleRef.current();
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [supported, speaking]);
 
   const isSpeaking = useCallback(() => queued.current > 0, []);
 

@@ -183,3 +183,44 @@ body {
     animation: none;
   }
 }
+
+/* 中心のリングの状態の動き（Ring.tsx） */
+@keyframes dimy-eq {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+.dimy-eq {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dimy-eq 0.5s ease-in-out infinite;
+}
+@keyframes dimy-ripple-out {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+.dimy-ripple-out {
+  animation: dimy-ripple-out 1.8s ease-out infinite;
+}
+@keyframes dimy-ripple-in {
+  from { transform: scale(2.6); opacity: 0; }
+  60% { opacity: 0.7; }
+  to { transform: scale(1); opacity: 0; }
+}
+.dimy-ripple-in {
+  animation: dimy-ripple-in 1.5s ease-in infinite;
+}
+@keyframes dimy-think {
+  0%, 100% { opacity: 0.45; transform: scale(0.94); }
+  50% { opacity: 0.8; transform: scale(0.98); }
+}
+.dimy-think {
+  animation: dimy-think 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dimy-eq,
+  .dimy-ripple-out,
+  .dimy-ripple-in,
+  .dimy-think {
+    animation: none;
+  }
+}

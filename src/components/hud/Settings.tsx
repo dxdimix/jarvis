@@ -35,6 +35,8 @@ export type SettingsProps = {
   onTestVoice: () => void;
   // 呼びかけ
   wakeSupported: boolean;
+  wakeStatus: string; // 確かめる用: 聞き取りの状態
+  wakeLastHeard: string; // 確かめる用: 最後に聞こえた言葉
   wakeOn: boolean;
   setWakeOn: (v: boolean) => void;
   followSec: number;
@@ -165,6 +167,19 @@ function WakeTab(p: SettingsProps) {
         />
       ) : (
         <p className="text-slate-400">このブラウザは音声認識に対応していないため、呼びかけは使えません。</p>
+      )}
+      {p.wakeSupported && p.wakeOn && (
+        <div className="rounded border border-cyan-400/20 bg-slate-900/60 p-3 font-mono text-xs">
+          <div className="flex gap-2">
+            <span className="shrink-0 text-cyan-400/70">状態</span>
+            <span className="text-cyan-100">{p.wakeStatus}</span>
+          </div>
+          <div className="mt-1 flex gap-2">
+            <span className="shrink-0 text-cyan-400/70">最後に聞こえた言葉</span>
+            <span className="break-all text-cyan-100">{p.wakeLastHeard || "（まだありません）"}</span>
+          </div>
+          <p className="mt-2 font-sans text-slate-400">「ディミ」と呼んでも反応しないときは、ここに何と聞こえたかを教えてください。聞き間違いの言葉を呼びかけとして足します。</p>
+        </div>
       )}
       <Slider
         label="返事のあと、続けて話せる時間"

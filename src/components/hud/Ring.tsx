@@ -2,6 +2,12 @@
 // 名前の 4 文字（D・I・M・Y＝会社 DimiX と家族）にちなんで、4 つに区切ったリングを中心に置く。
 // - いつもゆっくり回る。考え中は速く回り、話し中は中心が脈打ち、聞き取り中は外側が明るくなる。
 // - 状態で色が変わる（通常: 水色 / 注意: 琥珀色 / PC がオフライン: 灰色）。
+// - 今していることが一目で分かるように、球体の中と周りの動きを状態ごとに変える:
+//   聞き取り中: 外から球体へ吸い込まれる波紋と、球体の中で揺れる縦の棒（声を受け取っている）
+//   考え中: 球体が暗くなり、周りを光の粒が速く回る
+//   話し中: 球体から外へ広がる波紋と、球体の中で上下に揺れる波形（声を出している）
+//   呼びかけを待っている間（waiting）: 球体の縁を小さな点がゆっくり回る
+//   球体の下に、今の状態を文字でも出す
 
 export type RingMode = "idle" | "thinking" | "speaking" | "listening";
 export type RingTone = "normal" | "warn" | "offline";
@@ -30,7 +36,33 @@ function arc(r: number, start: number, end: number) {
   return `M ${a.x} ${a.y} A ${r} ${r} 0 ${large} 1 ${b.x} ${b.y}`;
 }
 
-export function Ring({ mode, tone }: { mode: RingMode; tone: RingTone }) {
+/** 球体の中の棒（聞き取り中・話し中に揺れる） */
+function Bars({ color, count, width, gap, maxH, speed }: { color: string; count: number; width: number; gap: number; maxH: number; speed: number }) {
+  const total = count * width + (count - 1) * gap;
+  return (
+    <g>
+      {Array.from({ length: count }, (_, i) => {
+        // 真ん中ほど高く
+        const h = maxH * (0.45 + 0.55 * Math.sin(((i + 0.5) / count) * Math.PI));
+        return (
+          <rect
+            key={i}
+            x={C - total / 2 + i * (width + gap)}
+            y={C - h / 2}
+            width={width}
+            height={h}
+            rx={width / 2}
+            fill={color}
+            className="dimy-eq"
+            style={{ animationDuration: `${speed * (0.7 + ((i * 37) % 10) / 16)}s`, animationDelay: `${-((i * 53) % 10) / 12}s` }}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+export function Ring({ mode, tone, waiting = false }: { mode: RingMode; tone: RingTone; waiting?: boolean }) {
   const col = COLORS[tone];
   const fast = mode === "thinking";
   // 回る速さ（秒で 1 周）
@@ -116,13 +148,75 @@ export function Ring({ mode, tone }: { mode: RingMode; tone: RingTone }) {
         <path d={arc(106, 200, 290)} fill="none" stroke={col.soft} strokeWidth={3} strokeLinecap="round" />
       </g>
 
-      {/* 中心：光る球体（話し中は脈打ち、待機中は静かに息づく） */}
-      <g className={mode === "speaking" ? "dimy-pulse" : "dimy-breathe"} style={{ transformOrigin: `${C}px ${C}px` }}>
+      {/* 聞き取り中: 外から球体へ吸い込まれる波紋 */}
+      {mode === "listening" &&
+        [0, 1, 2].map((i) => (
+          <circle
+            key={`in${i}`}
+            cx={C}
+            cy={C}
+            r={62}
+            fill="none"
+            stroke={col.main}
+            strokeWidth={2}
+            className="dimy-ripple-in"
+            style={{ transformOrigin: `${C}px ${C}px`, animationDelay: `${i * 0.5}s` }}
+          />
+        ))}
+      {/* 話し中: 球体から外へ広がる波紋 */}
+      {mode === "speaking" &&
+        [0, 1, 2].map((i) => (
+          <circle
+            key={`out${i}`}
+            cx={C}
+            cy={C}
+            r={62}
+            fill="none"
+            stroke={col.main}
+            strokeWidth={2}
+            className="dimy-ripple-out"
+            style={{ transformOrigin: `${C}px ${C}px`, animationDelay: `${i * 0.6}s` }}
+          />
+        ))}
+      {/* 考え中: 周りを速く回る光の粒（2 組が逆向きに） */}
+      {mode === "thinking" && (
+        <>
+          <g className="dimy-spin" style={{ animationDuration: "1.1s", transformOrigin: `${C}px ${C}px` }}>
+            {[0, 14, 28, 42].map((d, i) => {
+              const q = point(82, d);
+              return <circle key={d} cx={q.x} cy={q.y} r={5 - i} fill={col.main} fillOpacity={1 - i * 0.22} />;
+            })}
+          </g>
+          <g className="dimy-spin-reverse" style={{ animationDuration: "1.7s", transformOrigin: `${C}px ${C}px` }}>
+            {[180, 194, 208].map((d, i) => {
+              const q = point(82, d);
+              return <circle key={d} cx={q.x} cy={q.y} r={4 - i} fill={col.main} fillOpacity={0.8 - i * 0.25} />;
+            })}
+          </g>
+        </>
+      )}
+      {/* 呼びかけを待っている間: 球体の縁をゆっくり回る点 */}
+      {waiting && mode === "idle" && (
+        <g className="dimy-spin" style={{ animationDuration: "6s", transformOrigin: `${C}px ${C}px` }}>
+          <circle cx={point(72, 0).x} cy={point(72, 0).y} r={3} fill={col.main} />
+          <circle cx={C} cy={C} r={72} fill="none" stroke={col.main} strokeOpacity={0.2} strokeDasharray="1 7" />
+        </g>
+      )}
+
+      {/* 中心：光る球体（話し中は脈打ち、考え中は暗くなって点滅、待機中は静かに息づく） */}
+      <g
+        className={mode === "speaking" ? "dimy-pulse" : mode === "thinking" ? "dimy-think" : "dimy-breathe"}
+        style={{ transformOrigin: `${C}px ${C}px` }}
+      >
         <circle cx={C} cy={C} r={96} fill="url(#dimy-core)" />
         <circle cx={C} cy={C} r={62} fill="url(#dimy-sphere)" filter="url(#dimy-glow)" />
         <ellipse cx={C - 18} cy={C - 22} rx={20} ry={12} fill="#ffffff" fillOpacity={0.18} />
         <circle cx={C} cy={C} r={62} fill="none" stroke={col.main} strokeOpacity={0.7} />
       </g>
+      {/* 球体の中: 聞き取り中は細い縦の棒、話し中は太い波形 */}
+      {mode === "listening" && <Bars color="#ecfeff" count={9} width={4} gap={5} maxH={46} speed={0.55} />}
+      {mode === "speaking" && <Bars color="#020617" count={7} width={6} gap={5} maxH={54} speed={0.4} />}
+
       <text
         x={C}
         y={C + 84}
@@ -135,6 +229,21 @@ export function Ring({ mode, tone }: { mode: RingMode; tone: RingTone }) {
       >
         DIMY
       </text>
+      {/* 今の状態（待機中は出さない） */}
+      {(mode !== "idle" || tone === "offline") && (
+        <text
+          x={C}
+          y={C + 102}
+          fill={col.main}
+          fontSize={10}
+          letterSpacing={2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className="dimy-breathe"
+        >
+          {modeLabel(mode, tone)}
+        </text>
+      )}
     </svg>
   );
 }
