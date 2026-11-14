@@ -18,6 +18,9 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWakeWord } from "@/hooks/useWakeWord";
 import { useActiveDevice } from "@/hooks/useActiveDevice";
 import { isEcho, toSpeech } from "@/lib/wake";
+import { extractAccount, matchSession, parseMoveCommand, parseSearchCommand, parseSessionCommand, searchUrl } from "@/lib/commands";
+import { loadPcState, sendPcCommand, type PcState } from "@/lib/pc";
+import { boardLabel, loadPins, savePins, sendPin } from "@/lib/pins";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
 import { matchBookmark, type Bookmark } from "@/lib/bookmarks";
@@ -52,6 +55,7 @@ const VOICE_KEY = "dimy.voice";
 const RATE_KEY = "dimy.rate"; // 話す速さ
 const PITCH_KEY = "dimy.pitch"; // 声の高さ
 const VOLUME_KEY = "dimy.volume"; // ディミの声の大きさ（PC 全体の音量とは別）
+const ACCOUNT_KEY = "dimy.account"; // ディミの外（Chrome）で開くときの、いつものアカウントの番号
 const SILENCE_KEY = "dimy.silenceSec"; // 話し終わりとみなすまでの無音の時間（秒）
 const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
 const HOTKEY_KEY = "dimy.hotkey"; // 右 Ctrl を 2 回で話すか
@@ -256,9 +260,15 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   );
 
   // 話しかけられた内容の扱い（マイクのボタンでも、呼びかけでも同じ）
+  // 画面だけで済ませる命令（あとで中身を入れる。ここでは入れ物だけ）
+  const localCommandRef = useRef<(text: string) => Promise<boolean>>(async () => false);
+  const openOutsideRef = useRef<(url: string, title: string, account: number | null) => Promise<void>>(async () => {});
+  const accountNamesRef = useRef<Record<number, string>>({});
   const handleUtterance = useCallback(
       async (text: string) => {
         setError("");
+        // 検索・Chrome で開く・Claude のセッション・ウィンドウを移す、は画面と PC で済ませる（下の localCommandRef）
+        if (await localCommandRef.current(text)) return;
         // 「〇〇を開いて」は、ディミに聞かずにこの画面ですぐ開く
         const app = detectOpenCommand(text);
         if (app) {
@@ -266,14 +276,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           return;
         }
         // アプリの一覧になければ、Chrome のブックマークから探して、別のタブで開く
-        const bm = matchBookmark(text, bookmarksRef.current);
+        const acc = extractAccount(text, accountNamesRef.current);
+        const bm = matchBookmark(acc.rest, bookmarksRef.current);
         if (bm) {
-          const opened = window.open(bm.url, "_blank") !== null;
-          if (opened) announce(`${bm.title}を開きます`);
-          else {
-            setPendingLink(bm);
-            announce(`${bm.title}は、下のボタンを押すと開きます`);
-          }
+          await openOutsideRef.current(bm.url, bm.title, acc.account);
           return;
         }
         const { error } = await supabase.from("messages").insert({ role: "user", content: text });
@@ -394,6 +400,103 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   // 固定ウィンドウ（メイン画面に置いておくページや映像）
   const pins = usePinBoard("hud", session);
   const dragging = usePinDrop((url, at) => pins.addWeb(url, at));
+
+  // PC の情報（Chrome のプロフィール＝アカウント、PC の Claude Code のセッション）
+  const [pcState, setPcState] = useState<PcState | null>(null);
+  const [defaultAccount, setDefaultAccount] = useState(1);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDefaultAccount(loadNumber(ACCOUNT_KEY, 1));
+  }, []);
+  const refreshPcState = useCallback(() => {
+    loadPcState(supabase).then((st) => st && setPcState(st));
+  }, [supabase]);
+  useEffect(() => {
+    refreshPcState();
+    const t = setInterval(refreshPcState, 5 * 60_000);
+    return () => clearInterval(t);
+  }, [refreshPcState]);
+
+  /** ディミの外（Chrome）で開く。PC が動いていれば、指定のアカウント（Chrome のプロフィール）で PC が開く */
+  async function openOutside(url: string, title: string, account: number | null) {
+    const n = account ?? defaultAccount;
+    if (online) {
+      announce(`${title}を開きます`);
+      const r = await sendPcCommand(supabase, "open_url", { url, account: n });
+      if (r.ok) return;
+      if (r.sent) return announce(r.result || "PC で開けませんでした");
+      // 表がまだないなど、PC に送れなかったときは、このブラウザで開く
+    }
+    if (window.open(url, "_blank") === null) {
+      setPendingLink({ title, url, folder: "" });
+      announce(`${title}は、下のボタンを押すと開きます`);
+    } else announce(`${title}を開きます`);
+  }
+
+  /** 固定ウィンドウをまとめて移す（声の「モニター4のパレットに移して」など）。移した数を返す */
+  function movePins(from: string, to: string) {
+    if (from === "hud") {
+      const list = pins.pins.filter((p) => p.kind === "web");
+      list.forEach((p) => pins.send(p.id, to));
+      return list.length;
+    }
+    const list = loadPins(from);
+    const moving = list.filter((p) => p.kind === "web");
+    moving.forEach((p) => sendPin(p, to));
+    savePins(from, list.filter((p) => p.kind !== "web"));
+    if (to === "hud") pins.reload();
+    return moving.length;
+  }
+
+  /** 画面と PC だけで済ませる命令。済ませたら true */
+  async function localCommand(text: string): Promise<boolean> {
+    const names = accountNamesRef.current;
+    const done = () => {
+      // 呼びかけで話しかけていたら、言い終えたあと続けて話せるようにする
+      if (wakeOn) {
+        if (speakOn) followUpAfterSpeech.current = true;
+        else wakeRef.current?.followUp();
+      }
+      return true;
+    };
+    const mv = parseMoveCommand(text);
+    if (mv) {
+      const n = movePins(mv.from, mv.to);
+      announce(n ? `${boardLabel(mv.to)}に${n}個移しました` : `${boardLabel(mv.from)}に移せるウィンドウがありません`);
+      return done();
+    }
+    const sc = parseSearchCommand(text, names);
+    if (sc) {
+      await openOutside(searchUrl(sc), `${sc.site === "youtube" ? "YouTube" : "Google"}で「${sc.query}」`, sc.account);
+      return done();
+    }
+    const ss = parseSessionCommand(extractAccount(text, names).rest);
+    if (ss) {
+      const acc = extractAccount(text, names).account;
+      if (ss.kind !== "chat" && ss.query) {
+        const hit = matchSession(pcState?.claude_sessions ?? [], ss.query);
+        if (hit) {
+          announce(`「${hit.title}」を開きます`);
+          const r = await sendPcCommand(supabase, "open_session", { id: hit.id });
+          if (!r.ok) announce(r.result || "PC でセッションを開けませんでした");
+          return done();
+        }
+      }
+      // claude.ai のチャットと Code のセッションは、名前で探す手段がないので、一覧の画面を開く
+      const url = ss.kind === "chat" ? "https://claude.ai/recents" : "https://claude.ai/code";
+      if (ss.query) announce(`PC のセッションに「${ss.query}」が見つからないので、claude.ai の一覧を開きます`);
+      await openOutside(url, ss.kind === "chat" ? "Claude のチャットの一覧" : "Claude Code のセッションの一覧", acc);
+      return done();
+    }
+    return false;
+  }
+  useEffect(() => {
+    localCommandRef.current = localCommand;
+    openOutsideRef.current = openOutside;
+    const names: Record<number, string> = {};
+    pcState?.chrome_profiles.forEach((p, i) => (names[i + 1] = p.name));
+    accountNamesRef.current = names;
+  });
 
   // 今日の会話の数（計器に出す）
   const [todayCount, setTodayCount] = useState<number | null>(null);
@@ -721,6 +824,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           wakeLastHeard={wake.lastHeard}
           wakeOn={wakeOn}
           setWakeOn={changeWake}
+          profiles={pcState?.chrome_profiles ?? null}
+          defaultAccount={defaultAccount}
+          setDefaultAccount={(n) => {
+            setDefaultAccount(n);
+            save(ACCOUNT_KEY, String(n));
+          }}
+          onRefreshProfiles={refreshPcState}
           silenceSec={silenceSec}
           setSilenceSec={(v) => {
             setSilenceSec(v);

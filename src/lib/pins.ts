@@ -121,3 +121,27 @@ export function titleFromUrl(url: string) {
     return url;
   }
 }
+
+/** パレットの画面分割（固定の枠）。free は枠なし */
+export type SplitLayout = "free" | "cols2" | "rows2" | "grid4";
+export type Rect = { x: number; y: number; w: number; h: number };
+
+/** 画面の大きさから、分割の枠（画面の座標）を作る。gap は枠どうしのすき間 */
+export function splitSlots(layout: SplitLayout, width: number, height: number, gap = 8, top = 0): Rect[] {
+  const W = width;
+  const H = height - top;
+  const cell = (cx: number, cy: number, nx: number, ny: number): Rect => {
+    const w = (W - gap * (nx + 1)) / nx;
+    const h = (H - gap * (ny + 1)) / ny;
+    return { x: gap + cx * (w + gap), y: top + gap + cy * (h + gap), w, h };
+  };
+  if (layout === "cols2") return [cell(0, 0, 2, 1), cell(1, 0, 2, 1)];
+  if (layout === "rows2") return [cell(0, 0, 1, 2), cell(0, 1, 1, 2)];
+  if (layout === "grid4") return [cell(0, 0, 2, 2), cell(1, 0, 2, 2), cell(0, 1, 2, 2), cell(1, 1, 2, 2)];
+  return [];
+}
+
+/** 点が入っている枠の番号（なければ -1） */
+export function slotAt(slots: Rect[], x: number, y: number) {
+  return slots.findIndex((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+}

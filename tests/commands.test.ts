@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMoveCommand, parseSearchCommand, searchUrl } from "../src/lib/commands";
+import { extractAccount, matchSession, parseMoveCommand, parseSearchCommand, parseSessionCommand, searchUrl } from "../src/lib/commands";
 
 describe("parseSearchCommand", () => {
   it("YouTube / Google で検索", () => {
@@ -10,7 +10,7 @@ describe("parseSearchCommand", () => {
   it("アカウントの指定", () => {
     expect(parseSearchCommand("アカウント2でYouTubeで料理と検索")?.account).toBe(2);
     expect(parseSearchCommand("YouTubeで料理と検索 アカウント２で")?.account).toBe(2);
-    expect(parseSearchCommand("仕事用でグーグルで会議室と検索", { 2: "仕事用" })).toEqual({ site: "google", query: "会議室", account: 2 });
+    expect(parseSearchCommand("仕事用のアカウントでグーグルで会議室と検索", { 2: "仕事用" })).toEqual({ site: "google", query: "会議室", account: 2 });
   });
   it("検索の命令でなければ null", () => {
     expect(parseSearchCommand("YouTubeで何が人気？")).toBeNull();
@@ -34,5 +34,24 @@ describe("parseMoveCommand", () => {
   it("移す命令でなければ null", () => {
     expect(parseMoveCommand("FXを開いて")).toBeNull();
     expect(parseMoveCommand("メインに戻して")).toBeNull();
+  });
+});
+
+describe("Claude のセッション", () => {
+  it("命令を見分ける", () => {
+    expect(parseSessionCommand("Claudeの株の集計というセッションを開いて")).toEqual({ kind: "any", query: "株の集計" });
+    expect(parseSessionCommand("クロードのチャットを開いて")).toEqual({ kind: "chat", query: "" });
+    expect(parseSessionCommand("クロードコードの注文画面のセッション開いて")).toEqual({ kind: "code", query: "注文画面" });
+    expect(parseSessionCommand("今日の天気は")).toBeNull();
+  });
+  it("題名で探す", () => {
+    const list = [{ title: "FX の注文画面を直して" }, { title: "株の集計を作る" }];
+    expect(matchSession(list, "株の集計")).toBe(list[1]);
+    expect(matchSession(list, "注文画面")).toBe(list[0]);
+    expect(matchSession(list, "競馬")).toBeNull();
+  });
+  it("アカウントの指定", () => {
+    expect(extractAccount("アカウント2で FX を開いて")).toEqual({ account: 2, rest: "FX を開いて" });
+    expect(extractAccount("個人のアカウントでYouTubeを開いて", { 2: "個人" }).account).toBe(2);
   });
 });

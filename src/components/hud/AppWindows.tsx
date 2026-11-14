@@ -76,6 +76,20 @@ export function useAppWindows() {
   return { wins, setWins, open, zTopRef };
 }
 
+/**
+ * 大きくしたときの場所。ディミの画面のボタン（右上のボタン・左端のアプリのアイコン・下のマイク）と重ならないよう、
+ * その分を空けて広げる（スマホなど狭い画面では、画面いっぱい）。
+ */
+function maxBox() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (vw < 768) return { left: 0, top: 0, width: vw, height: vh };
+  const left = 76; // 左端のアプリのアイコン
+  const top = 72; // 右上のボタン
+  const bottom = 104; // 下のマイクと強制停止
+  return { left, top, width: vw - left - 12, height: vh - top - bottom };
+}
+
 /** 光る角の印（L 字）。corner で向きを決める */
 export function Bracket({ corner, className = "" }: { corner: "tl" | "br"; className?: string }) {
   const d = corner === "tl" ? "M1.5 22V1.5H22" : "M22.5 2v20.5H2";
@@ -130,7 +144,7 @@ export function AppWindows({ state }: { state: ReturnType<typeof useAppWindows> 
     <>
       {wins.map((win) => {
         const app = APPS.find((a) => a.id === win.id)!;
-        const box = win.max ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } : { left: win.x, top: win.y, width: win.w, height: win.h };
+        const box = win.max ? maxBox() : { left: win.x, top: win.y, width: win.w, height: win.h };
         // 出てきた場所を、小窓の中の座標で表す（そこを中心に大きくなる）
         const origin = `${win.from.x - box.left}px ${win.from.y - box.top}px`;
         return (

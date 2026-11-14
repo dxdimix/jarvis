@@ -19,11 +19,13 @@ import {
   savePins,
   saveView,
   sendPin,
+  slotAt,
   titleFromUrl,
   wheelZoom,
   zoomAt,
   type BoardView,
   type Pin,
+  type Rect,
 } from "@/lib/pins";
 import { droppedUrl } from "@/lib/frame";
 import { Bracket } from "@/components/hud/AppWindows";
@@ -32,6 +34,17 @@ import { CaptureIcon, CloseIcon, ExternalIcon, LockIcon, PinIcon, ReloadIcon, Se
 const MIN_W = 200;
 const MIN_H = 120;
 const btn = "grid h-6 w-6 place-items-center rounded-sm text-cyan-300/80 transition hover:bg-cyan-400/15 hover:text-cyan-50";
+
+// この画面の表示部分の左上の、モニター上の座標。マウスが動くたびに正確な値に直す
+const viewportOrigin = { x: 0, y: 0 };
+if (typeof window !== "undefined") {
+  viewportOrigin.x = window.screenX + (window.outerWidth - window.innerWidth) / 2;
+  viewportOrigin.y = window.screenY + (window.outerHeight - window.innerHeight);
+  window.addEventListener("pointermove", (e) => {
+    viewportOrigin.x = e.screenX - e.clientX;
+    viewportOrigin.y = e.screenY - e.clientY;
+  });
+}
 
 type Dir = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
@@ -116,6 +129,28 @@ export function usePinBoard(board: string, session: Session) {
     [stopStream],
   );
 
+  // 画面分割の枠（画面の座標）。枠があるときは、新しく来たウィンドウを空いている枠にぴったり入れる
+  const slotsRef = useRef<Rect[]>([]);
+  const setSlots = useCallback((slots: Rect[]) => {
+    slotsRef.current = slots;
+  }, []);
+  /** 画面の座標の枠を、置き場所の座標（縮尺と位置を戻したもの）にする */
+  const toBoard = useCallback((r: Rect) => {
+    const v = viewRef.current;
+    return { x: (r.x - v.x) / v.z, y: (r.y - v.y) / v.z, w: r.w / v.z, h: r.h / v.z };
+  }, []);
+  /** 空いている枠（どのウィンドウも入っていない枠）。なければ最後の枠 */
+  const freeSlot = useCallback((list: Pin[], exceptId?: string): Rect | null => {
+    const slots = slotsRef.current;
+    if (!slots.length) return null;
+    const near = (a: number, b: number) => Math.abs(a - b) < 2;
+    for (const r of slots) {
+      const b = toBoard(r);
+      if (!list.some((p) => p.id !== exceptId && near(p.x, b.x) && near(p.y, b.y))) return b;
+    }
+    return toBoard(slots[slots.length - 1]);
+  }, [toBoard]);
+
   // 画面の座標（at）を、置き場所の座標（縮尺と位置を戻したもの）にして、置く場所と大きさを決める
   const place = (at?: { x: number; y: number }, w = 640, h = 420) => {
     const v = viewRef.current;
@@ -152,11 +187,11 @@ export function usePinBoard(board: string, session: Session) {
       const id = newPinId();
       setPins((prev) => {
         const z = Math.max(10, ...prev.map((p) => p.z)) + 1;
-        return [...prev, { id, kind: "web", url, title: title ?? titleFromUrl(url), z, ...place(at) }];
+        return [...prev, { id, kind: "web", url, title: title ?? titleFromUrl(url), z, ...(freeSlot(prev) ?? place(at)) }];
       });
       checkFrame(id, url);
     },
-    [checkFrame],
+    [checkFrame, freeSlot],
   );
 
   /** 映像で映す。replaceId を渡すと、そのウィンドウの場所で映す（選び直し・ページからの切り替え） */
@@ -209,7 +244,67 @@ export function usePinBoard(board: string, session: Session) {
     [pins],
   );
 
-  return { board, pins, streams, update, front, remove, addWeb, addCapture, send, view, setView };
+  /** 保存から読み直す（ほかの置き場所から、この画面で送り込んだとき） */
+  const reload = useCallback(() => setPins(loadPins(board)), [board]);
+
+  // ほかのディミの画面（パレットなど）との間で、ウィンドウをドラッグで移す（同じブラウザの中だけ）
+  // - 開いている画面は 1 秒ごとに、自分の画面の位置（モニター上の座標）を知らせ合う
+  // - ドラッグして自分の画面の外で離したら、その場所にある画面へ送る
+  const others = useRef(new Map<string, { x: number; y: number; w: number; h: number; at: number }>());
+  const chanRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("dimy-boards");
+    chanRef.current = ch;
+    const here = () =>
+      ch.postMessage({ type: "here", board, rect: { x: viewportOrigin.x, y: viewportOrigin.y, w: window.innerWidth, h: window.innerHeight } });
+    ch.onmessage = (ev) => {
+      const m = ev.data;
+      if (m?.type === "here" && m.board !== board) others.current.set(m.board, { ...m.rect, at: Date.now() });
+      if (m?.type === "drop" && m.to === board) {
+        const v = viewRef.current;
+        const pin = m.pin as Pin;
+        const x = (m.clientX - v.x) / v.z - m.grab.x / v.z;
+        const y = (m.clientY - v.y) / v.z - m.grab.y / v.z;
+        setPins((prev) => {
+          const z = Math.max(10, ...prev.map((p) => p.z)) + 1;
+          // 画面分割のときは、離した場所の枠（なければ空いている枠）にぴったり入れる
+          const slots = slotsRef.current;
+          const i = slotAt(slots, m.clientX, m.clientY);
+          const slot = i >= 0 ? toBoard(slots[i]) : freeSlot(prev, pin.id);
+          const placed = slot ? { ...pin, ...slot, z } : { ...pin, x, y: Math.max(0, y), z };
+          return [...prev.filter((p) => p.id !== pin.id), placed];
+        });
+        if (pin.kind === "web" && pin.url) checkFrame(pin.id, pin.url);
+      }
+    };
+    here();
+    const t = setInterval(here, 1000);
+    return () => {
+      clearInterval(t);
+      ch.close();
+      chanRef.current = null;
+    };
+  }, [board, checkFrame, toBoard, freeSlot]);
+
+  /** モニター上の点（screenX, screenY）にある、ほかのディミの画面へ送る。送れたら true */
+  const dropTo = useCallback(
+    (pin: Pin, screenX: number, screenY: number, grab: { x: number; y: number }) => {
+      if (pin.kind !== "web") return false;
+      for (const [b, r] of others.current) {
+        if (Date.now() - r.at > 3000) continue;
+        if (screenX >= r.x && screenX < r.x + r.w && screenY >= r.y && screenY < r.y + r.h) {
+          chanRef.current?.postMessage({ type: "drop", to: b, pin, clientX: screenX - r.x, clientY: screenY - r.y, grab });
+          setPins((prev) => prev.filter((p) => p.id !== pin.id));
+          return true;
+        }
+      }
+      return false;
+    },
+    [],
+  );
+
+  return { board, pins, streams, update, front, remove, addWeb, addCapture, send, view, setView, reload, dropTo, setSlots, toBoard };
 }
 
 export type PinBoardState = ReturnType<typeof usePinBoard>;
@@ -293,8 +388,20 @@ function Video({ stream }: { stream: MediaStream }) {
  * zoomable: 置き場所全体の縮尺を変えられる（パレット）。Ctrl + ホイールで縮尺、背景のドラッグで動かす（背景のドラッグは Palette.tsx）。
  * どの置き場所でも、ウィンドウの上で Ctrl + ホイールをすると、そのウィンドウの中身の縮尺だけが変わる。
  */
-export function PinBoard({ state, className = "", zoomable = false }: { state: PinBoardState; className?: string; zoomable?: boolean }) {
-  const { pins, streams, update, front, remove, addCapture, send, board, view, setView } = state;
+export function PinBoard({
+  state,
+  className = "",
+  zoomable = false,
+  slots = [],
+}: {
+  state: PinBoardState;
+  className?: string;
+  zoomable?: boolean;
+  /** 画面分割の枠（画面の座標）。ドラッグして離すと、その枠いっぱいの大きさになる */
+  slots?: Rect[];
+}) {
+  const { pins, streams, update, front, remove, addCapture, send, board, view, setView, dropTo, toBoard } = state;
+  const [hoverSlot, setHoverSlot] = useState(-1);
   const v = zoomable ? view : DEFAULT_VIEW;
 
   // Ctrl を押している間は、ページの上に透明な板を置いて、ホイールをディミが受け取る
@@ -367,7 +474,10 @@ export function PinBoard({ state, className = "", zoomable = false }: { state: P
     const dx = (e.clientX - a.sx) / v.z;
     const dy = (e.clientY - a.sy) / v.z;
     const { o } = a;
-    if (a.dir === "move") return update(a.id, { x: o.x + dx, y: zoomable ? o.y + dy : Math.max(0, o.y + dy) });
+    if (a.dir === "move") {
+      if (slots.length) setHoverSlot(slotAt(slots, e.clientX, e.clientY));
+      return update(a.id, { x: o.x + dx, y: o.y + dy });
+    }
     let { x, y, w, h } = o;
     if (a.dir.includes("e")) w = Math.max(MIN_W, o.w + dx);
     if (a.dir.includes("s")) h = Math.max(MIN_H, o.h + dy);
@@ -381,9 +491,26 @@ export function PinBoard({ state, className = "", zoomable = false }: { state: P
     }
     update(a.id, { x, y, w, h });
   }
-  function end() {
+  function end(e: React.PointerEvent) {
+    const a = action.current;
     action.current = null;
     setBusy(false);
+    setHoverSlot(-1);
+    if (!a || a.dir !== "move") return;
+    const pin = pins.find((p) => p.id === a.id);
+    if (!pin) return;
+    // 画面分割のとき: 離した枠いっぱいの大きさにする
+    const si = slotAt(slots, e.clientX, e.clientY);
+    if (si >= 0) return update(a.id, toBoard(slots[si]));
+    const outside = e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight;
+    if (outside) {
+      // 画面の外で離した: そこにあるディミの画面（パレットなど）へ送る。なければ元の場所に戻す
+      const grab = { x: (a.sx - (a.o.x * v.z + v.x)), y: (a.sy - (a.o.y * v.z + v.y)) };
+      if (!dropTo(pin, e.screenX, e.screenY, grab)) update(a.id, { x: a.o.x, y: a.o.y });
+      return;
+    }
+    // 帯が画面の上にはみ出したら戻す（つかめなくなるため）
+    if (pin.y * v.z + v.y < 0) update(a.id, { y: -v.y / v.z });
   }
 
   const edge = (pin: Pin, dir: Dir, cls: string) =>
@@ -391,6 +518,17 @@ export function PinBoard({ state, className = "", zoomable = false }: { state: P
 
   return (
     <div className={"pointer-events-none fixed inset-0 overflow-hidden " + className}>
+      {/* 画面分割の枠 */}
+      {slots.map((r, i) => (
+        <div
+          key={i}
+          style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
+          className={
+            "absolute rounded-sm border transition-colors " +
+            (hoverSlot === i ? "border-cyan-200/90 bg-cyan-300/10 shadow-[inset_0_0_30px_rgba(34,211,238,0.25)]" : "border-dashed border-cyan-400/30")
+          }
+        />
+      ))}
       <div className="absolute left-0 top-0" style={{ transform: `translate(${v.x}px, ${v.y}px) scale(${v.z})`, transformOrigin: "0 0" }}>
       {pins.map((pin) => {
         const stream = streams[pin.id];

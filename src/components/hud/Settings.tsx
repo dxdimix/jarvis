@@ -4,17 +4,20 @@
 // - 音声: 読み上げ、声の大きさ、声、話す速さ、声の高さ
 // - 聞き取り: 話し終わりを待つ時間、「ディミ」の呼びかけ、続けて話せる時間、右 Ctrl を 2 回
 // - 表示: 天気の地域、字幕を出しておく時間
+// - アカウント: ディミの外（Chrome）で開くときのアカウント（Chrome のプロフィール）
 
 import { useEffect, useState } from "react";
 import type { Place } from "@/lib/weather";
+import type { ChromeProfile } from "@/lib/pc";
 import { DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOLUME } from "@/hooks/useSpeaker";
 import { CloseIcon } from "./Icons";
 
-type Tab = "voice" | "wake" | "display";
+type Tab = "voice" | "wake" | "display" | "account";
 const TABS: { id: Tab; label: string }[] = [
   { id: "voice", label: "音声" },
   { id: "wake", label: "聞き取り" },
   { id: "display", label: "表示" },
+  { id: "account", label: "アカウント" },
 ];
 const TAB_KEY = "dimy.settingsTab";
 
@@ -45,6 +48,11 @@ export type SettingsProps = {
   setFollowSec: (v: number) => void;
   hotkeyOn: boolean;
   setHotkeyOn: (v: boolean) => void;
+  // アカウント
+  profiles: ChromeProfile[] | null;
+  defaultAccount: number;
+  setDefaultAccount: (n: number) => void;
+  onRefreshProfiles: () => void;
   // 表示
   place: Place | null;
   onSavePlace: (name: string) => Promise<string | null>; // 失敗したときは理由を返す
@@ -112,6 +120,7 @@ export function Settings(p: SettingsProps) {
           {tab === "voice" && <VoiceTab {...p} />}
           {tab === "wake" && <WakeTab {...p} />}
           {tab === "display" && <DisplayTab {...p} />}
+          {tab === "account" && <AccountTab {...p} />}
         </div>
       </div>
     </div>
@@ -250,6 +259,44 @@ function DisplayTab(p: SettingsProps) {
         def={12}
         format={(v) => (v === 0 ? "話している間だけ" : `${v} 秒`)}
       />
+    </>
+  );
+}
+
+function AccountTab(p: SettingsProps) {
+  return (
+    <>
+      <p className="text-xs leading-relaxed text-slate-400">
+        ディミの外（Chrome）で開くもの（YouTube・Google の検索、ブックマーク、Claude など）は、PC のディミが Chrome で開きます。
+        「アカウント2で YouTube で〇〇と検索」のように言うと、2 番目の Chrome のプロフィールで開きます。プロフィールの名前（例: 「個人のアカウントで」）でも呼べます。
+      </p>
+      {p.profiles === null ? (
+        <p className="text-slate-400">PC の情報がまだ届いていません（PC のディミが動いていて、データベースの更新が済んでいれば、数分で出ます）。</p>
+      ) : (
+        <div className="space-y-1.5">
+          {p.profiles.map((pr, i) => (
+            <label key={pr.dir} className="flex cursor-pointer items-center gap-3 rounded border border-cyan-400/20 px-3 py-2 hover:bg-cyan-400/5">
+              <input
+                type="radio"
+                name="dimy-account"
+                checked={p.defaultAccount === i + 1}
+                onChange={() => p.setDefaultAccount(i + 1)}
+                className="accent-cyan-400"
+              />
+              <span className="w-24 shrink-0 font-mono text-xs text-cyan-300">アカウント{i + 1}</span>
+              <span className="min-w-0 flex-1 truncate text-cyan-100">{pr.name}</span>
+              <span className="truncate text-xs text-slate-400">{pr.email}</span>
+            </label>
+          ))}
+          <p className="text-xs text-slate-400">印を付けたアカウントが、指定しないときのアカウントです。</p>
+        </div>
+      )}
+      <p className="text-xs leading-relaxed text-slate-400">
+        アカウントを増やすには、PC の Chrome の右上の人のアイコン →「プロフィールを追加」で、別のアカウントにログインしておいてください。番号は Chrome のプロフィールの並び順です。
+      </p>
+      <button onClick={p.onRefreshProfiles} className="rounded border border-cyan-500/50 px-4 py-1.5 text-cyan-200 hover:bg-cyan-400/10">
+        読み直す
+      </button>
     </>
   );
 }

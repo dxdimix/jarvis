@@ -18,6 +18,7 @@ import { startAutoUpdate } from "./lib/updater.mjs";
 import { aliasLegacyEnv } from "./lib/env.mjs";
 import { startBookmarkSync } from "./lib/bookmarks.mjs";
 import { startHotkeyWatch } from "./lib/hotkey.mjs";
+import { runCommand, startPcStateSync } from "./lib/pc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
@@ -317,9 +318,56 @@ try {
     process.env.DIMY_OWNER_ID = owner.id;
     // Chrome のブックマークを写す（利用者のメールアドレスでログインしている Chrome のプロフィールから）
     if (owner.email && process.env.DIMY_BOOKMARKS !== "off") startBookmarkSync({ supabase, userId: owner.id, email: owner.email, log });
+    // Chrome のプロフィールと Claude Code のセッションの一覧を画面に知らせ、画面からの命令（Chrome で開くなど）を受け付ける
+    startPcStateSync({ supabase, userId: owner.id, log });
+    startPcCommands(owner.id);
   } else log(`利用者が ${data.users.length} 人いるため、「覚える」道具は使いません。`);
 } catch (e) {
   log(`利用者を確かめられませんでした（${e.message ?? e}）。「覚える」道具は使いません。`);
+}
+
+// 画面からの命令（表 pc_commands）を実行する。利用者本人の命令だけ。古い命令（2 分以上前）は実行しない。
+function startPcCommands(ownerId) {
+  const done = new Set();
+  async function exec(cmd) {
+    if (done.has(cmd.id) || cmd.status !== "pending") return;
+    done.add(cmd.id);
+    let status = "done";
+    let result;
+    if (cmd.user_id !== ownerId) {
+      status = "error";
+      result = "利用者本人の命令ではありません。";
+    } else if (Date.now() - new Date(cmd.created_at).getTime() > 120_000) {
+      status = "error";
+      result = "時間がたっているので実行しませんでした。";
+    } else {
+      try {
+        result = await runCommand(cmd, { log });
+      } catch (e) {
+        status = "error";
+        result = e instanceof Error ? e.message : String(e);
+        log(`命令を実行できませんでした: ${result}`);
+      }
+    }
+    await supabase.from("pc_commands").update({ status, result }).eq("id", cmd.id).eq("status", "pending");
+  }
+  async function backlog() {
+    const { data, error } = await supabase.from("pc_commands").select("*").eq("status", "pending").order("created_at");
+    if (!error) for (const c of data) await exec(c);
+  }
+  // つながらなくても（表がまだないなど）つなぎ直しはしない（発言の通知まで止めないため）
+  let warned = false;
+  supabase
+    .channel("dimy-pc")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pc_commands" }, (p) => exec(p.new))
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") backlog();
+      if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !warned) {
+        warned = true;
+        log("画面からの命令（Chrome で開くなど）を受け取れません。データベースの更新がまだかもしれません。");
+      }
+    });
+  setInterval(backlog, 30_000).unref();
 }
 
 // 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
