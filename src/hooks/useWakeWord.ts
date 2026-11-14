@@ -14,7 +14,7 @@ import { parseControl, parseWake, type Control } from "@/lib/wake";
 
 export type WakeState = "off" | "standby" | "command" | "busy" | "followup";
 
-const WINDOW_MS = 8_000; // 呼ばれたあと・返事のあとに、続けて話せる時間
+const WINDOW_MS = 8_000; // 呼ばれたあと、話しかけるのを待つ時間
 
 export function useWakeWord(o: {
   enabled: boolean;
@@ -22,6 +22,7 @@ export function useWakeWord(o: {
   onWake: () => void; // 呼ばれた（「はい」と答える）
   onCommand: (text: string) => void; // 話しかけられた内容
   onControl: (c: Control) => void; // 終わり・聞かないで・取り消し
+  followMs?: number; // 返事のあと、続けて話せる時間（0 なら続けて話せない。既定 8 秒）
 }) {
   // 内部の状態。使わない設定のときは外には "off" と見せる（下の return）
   const [state, setStateRaw] = useState<WakeState>("standby");
@@ -44,11 +45,12 @@ export function useWakeWord(o: {
     timerRef.current = null;
     // 呼ばれたあと・返事のあとは、8 秒黙っていたら待機に戻る
     if (s === "command" || s === "followup") {
+      const ms = s === "followup" ? (cb.current.followMs ?? WINDOW_MS) : WINDOW_MS;
       timerRef.current = setTimeout(() => {
         stateRef.current = "standby";
         setStateRaw("standby");
         setInterim("");
-      }, WINDOW_MS);
+      }, ms);
     }
   }, []);
 
@@ -179,7 +181,9 @@ export function useWakeWord(o: {
     startCommand: useCallback(() => setState("command"), [setState]),
     /** 返事を言い終えたとき: 8 秒だけ続けて話せる状態にする */
     followUp: useCallback(() => {
-      if (stateRef.current === "busy" || stateRef.current === "standby") setState("followup");
+      if (cb.current.followMs === 0) {
+        if (stateRef.current === "busy") setState("standby");
+      } else if (stateRef.current === "busy" || stateRef.current === "standby") setState("followup");
     }, [setState]),
     /** 話し終わりの合図（ボタンやキー）: ブラウザが言い終わりと判断するのを待たずに送る */
     finish: useCallback(() => {

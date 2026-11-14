@@ -96,7 +96,11 @@ export function Chat({
         if (talkMode) startListening();
       }
     },
-    loadSetting("voice", "") || null,
+    {
+      voiceName: loadSetting("voice", "") || null,
+      rate: Number(loadSetting("rate", "")) || undefined,
+      pitch: Number(loadSetting("pitch", "")) || undefined,
+    },
   );
   const { speak, cancel: cancelSpeech, isSpeaking } = speaker;
 

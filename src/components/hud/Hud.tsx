@@ -3,7 +3,8 @@
 // ディミのメイン画面（声が中心）。文字は最小限にし、操作はアイコンだけ。
 // - 中央: 光る球体とリング。周りをデータが流れ続ける
 // - 下中央: マイク。左下: 日時。右下: 天気。左上: PC の状態
-// - 右上のアイコン: 会話（履歴と文字入力のパネル）、覚えていること、読み上げ、設定、全画面
+// - 右上のアイコン: 会話（履歴と文字入力のパネル）、ブックマーク、覚えていること、設定、全画面
+//   読み上げ・声・呼びかけなどの設定は、すべて設定の画面（Settings.tsx）にまとめる
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,6 +23,7 @@ import { matchBookmark, type Bookmark } from "@/lib/bookmarks";
 import { AppDock, AppWindows, useAppWindows } from "./AppWindows";
 import { Ring, type RingMode, type RingTone } from "./Ring";
 import { DataField } from "./DataField";
+import { Settings } from "./Settings";
 import {
   ChatIcon,
   CloseIcon,
@@ -29,11 +31,9 @@ import {
   GearIcon,
   MemoryIcon,
   BookmarkIcon,
-  WakeIcon,
   MicIcon,
   PcIcon,
   ShrinkIcon,
-  SpeakerIcon,
   StopIcon,
   WeatherIcon,
 } from "./Icons";
@@ -42,7 +42,11 @@ const PLACE_KEY = "dimy.weatherPlace";
 const SPEAK_KEY = "dimy.speak";
 const WAKE_KEY = "dimy.wake"; // 「ディミ」の呼びかけを待つか（端末ごと。最初はオフ）
 const VOICE_KEY = "dimy.voice";
-const CAPTION_MS = 12_000; // 返事の字幕を出しておく時間
+const RATE_KEY = "dimy.rate"; // 話す速さ
+const PITCH_KEY = "dimy.pitch"; // 声の高さ
+const FOLLOW_KEY = "dimy.followSec"; // 返事のあと、続けて話せる時間（秒）
+const HOTKEY_KEY = "dimy.hotkey"; // 右 Ctrl を 2 回で話すか
+const CAPTION_KEY = "dimy.captionSec"; // 返事の字幕を出しておく時間（秒）
 
 function load(key: string) {
   try {
@@ -56,6 +60,11 @@ function save(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {}
+}
+function loadNumber(key: string, fallback: number) {
+  const v = load(key);
+  const n = v === null ? NaN : Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 const iconBtn =
@@ -105,11 +114,13 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const [fullscreen, setFullscreen] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
   const [wakeOn, setWakeOn] = useState(false);
+  const [followSec, setFollowSec] = useState(8);
+  const [hotkeyOn, setHotkeyOn] = useState(true);
+  const [captionSec, setCaptionSec] = useState(12);
   // 返事を言い終えたら、続けて話せる状態にする（呼びかけを待つ設定のとき）
   const followUpAfterSpeech = useRef(false);
   const wakeRef = useRef<{ followUp: () => void } | null>(null);
   const [place, setPlace] = useState<Place | null>(null);
-  const [placeInput, setPlaceInput] = useState("");
   const [error, setError] = useState("");
   const [captionUntil, setCaptionUntil] = useState(0);
   const weather = useWeather(place);
@@ -123,6 +134,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     if (p) setPlace(JSON.parse(p) as Place);
     setSpeakOn(load(SPEAK_KEY) !== "off");
     setWakeOn(load(WAKE_KEY) === "on");
+    setFollowSec(loadNumber(FOLLOW_KEY, 8));
+    setHotkeyOn(load(HOTKEY_KEY) !== "off");
+    setCaptionSec(loadNumber(CAPTION_KEY, 12));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -180,12 +194,12 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   }, [loadBookmarks]);
 
   const speaker = useSpeaker(() => {
-    setCaptionUntil(Date.now() + CAPTION_MS);
+    setCaptionUntil(Date.now() + captionSec * 1000);
     if (followUpAfterSpeech.current) {
       followUpAfterSpeech.current = false;
       wakeRef.current?.followUp();
     }
-  }, load(VOICE_KEY));
+  }, { voiceName: load(VOICE_KEY), rate: loadNumber(RATE_KEY, NaN) || undefined, pitch: loadNumber(PITCH_KEY, NaN) || undefined });
   const { speak, cancel: cancelSpeech } = speaker;
 
   const appWins = useAppWindows();
@@ -232,6 +246,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   const wake = useWakeWord({
     enabled: wakeOn,
     speaking: speaker.speaking || recognition.listening,
+    followMs: followSec * 1000,
     onWake: () => announce("はい"),
     onCommand: handleUtterance,
     onControl: (c) => {
@@ -280,10 +295,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           else wakeRef.current?.followUp();
         }
         // eslint-disable-next-line react-hooks/set-state-in-effect -- 返事が届いた時刻から字幕を出す
-        setCaptionUntil(Date.now() + CAPTION_MS);
+        setCaptionUntil(Date.now() + captionSec * 1000);
       }
     }
-  }, [messages, speak, speakOn, wakeOn]);
+  }, [messages, speak, speakOn, wakeOn, captionSec]);
 
   // 画面を消さない（ずっと表示しておくため）。対応していないブラウザでは何もしない。
   useEffect(() => {
@@ -328,8 +343,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   }
   // PC で右 Ctrl を 2 回押したとき（常駐プログラムが知らせてくる）: 話し始め / 話し終わって送る
   const onMicRef = useRef(onMic);
+  const hotkeyRef = useRef(hotkeyOn);
   useEffect(() => {
     onMicRef.current = onMic;
+    hotkeyRef.current = hotkeyOn;
   });
   useEffect(() => {
     const channel = supabase
@@ -337,6 +354,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       .on("broadcast", { event: "hotkey" }, () => {
         // スマホなど、指で操作する端末では反応しない（PC で押したキーでスマホが聞き始めないように）
         if (window.matchMedia("(pointer: coarse)").matches) return;
+        if (!hotkeyRef.current) return; // 設定でオフにしている
         onMicRef.current();
       })
       .subscribe();
@@ -345,15 +363,16 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     };
   }, [supabase]);
 
-  function toggleWake() {
-    const next = !wakeOn;
+  // 設定の画面を閉じる（Esc で閉じるときに使うので、毎回同じ関数にする）
+  const closePanel = useCallback(() => setPanel("none"), []);
+
+  function changeWake(next: boolean) {
     setWakeOn(next);
     save(WAKE_KEY, next ? "on" : "off");
     if (next) announce("「ディミ」と呼んでください");
   }
 
-  function toggleSpeak() {
-    const next = !speakOn;
+  function changeSpeak(next: boolean) {
     setSpeakOn(next);
     save(SPEAK_KEY, next ? "on" : "off");
     if (!next) cancelSpeech();
@@ -364,18 +383,16 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     else document.documentElement.requestFullscreen().catch(() => {});
   }
 
-  async function savePlace(e: React.FormEvent) {
-    e.preventDefault();
-    if (!placeInput.trim()) return;
-    setError("");
+  // 天気の地域を保存する。見つからないときは理由を返す
+  async function savePlace(name: string): Promise<string | null> {
     try {
-      const p = await findPlace(placeInput.trim());
-      if (!p) return setError("その地名が見つかりませんでした。市区町村の名前で入れてください。");
+      const p = await findPlace(name);
+      if (!p) return "その地名が見つかりませんでした。市区町村の名前で入れてください。";
       save(PLACE_KEY, JSON.stringify(p));
       setPlace(p);
-      setPlaceInput("");
+      return null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      return err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -433,20 +450,6 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         <Link href="/memory" className={iconBtn} title="覚えていること" aria-label="覚えていること">
           <MemoryIcon className="h-5 w-5" />
         </Link>
-        <button onClick={toggleSpeak} className={iconBtn} title={speakOn ? "読み上げ オン" : "読み上げ オフ"} aria-label="読み上げの切り替え" aria-pressed={speakOn}>
-          <SpeakerIcon className="h-5 w-5" off={!speakOn} />
-        </button>
-        {wake.supported && (
-          <button
-            onClick={toggleWake}
-            className={iconBtn + (wakeOn ? " border-cyan-300/80 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.45)]" : "")}
-            title={wakeOn ? "「ディミ」の呼びかけを待っています（押すとやめる）" : "「ディミ」の呼びかけを待つ"}
-            aria-label="呼びかけを待つ切り替え"
-            aria-pressed={wakeOn}
-          >
-            <WakeIcon className="h-5 w-5" off={!wakeOn} />
-          </button>
-        )}
         <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
           <GearIcon className="h-5 w-5" />
         </button>
@@ -550,45 +553,53 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         </div>
       )}
 
-      {/* 設定（天気の地域と声） */}
+      {/* 設定（カテゴリーごとのタブ） */}
       {panel === "settings" && (
-        <div className="absolute right-5 top-20 w-80 max-w-[calc(100vw-2.5rem)] rounded-lg border border-cyan-400/30 bg-slate-950/90 p-4 text-sm backdrop-blur">
-          <div className="mb-3 flex justify-end">
-            <button onClick={() => setPanel("none")} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
-              <CloseIcon className="h-5 w-5" />
-            </button>
-          </div>
-          <form onSubmit={savePlace} className="flex gap-2">
-            <WeatherIcon code={0} className="h-6 w-6 shrink-0 text-cyan-300" />
-            <input
-              value={placeInput}
-              onChange={(e) => setPlaceInput(e.target.value)}
-              placeholder={place ? place.name : "天気の地域（例: 横浜市）"}
-              className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
-            />
-            <button className="rounded bg-cyan-700 px-3 text-white">保存</button>
-          </form>
-          {speaker.japaneseVoices.length > 1 && (
-            <div className="mt-3 flex items-center gap-2">
-              <SpeakerIcon className="h-6 w-6 shrink-0 text-cyan-300" />
-              <select
-                value={speaker.voiceName ?? ""}
-                onChange={(e) => {
-                  speaker.setVoiceName(e.target.value);
-                  save(VOICE_KEY, e.target.value);
-                }}
-                className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
-                aria-label="声"
-              >
-                {speaker.japaneseVoices.map((v) => (
-                  <option key={v.name} value={v.name}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        <Settings
+          onClose={closePanel}
+          speakOn={speakOn}
+          setSpeakOn={changeSpeak}
+          voices={speaker.japaneseVoices}
+          voiceName={speaker.voiceName}
+          setVoiceName={(name) => {
+            speaker.setVoiceName(name);
+            save(VOICE_KEY, name);
+          }}
+          rate={speaker.rate}
+          setRate={(v) => {
+            speaker.setRate(v);
+            save(RATE_KEY, String(v));
+          }}
+          pitch={speaker.pitch}
+          setPitch={(v) => {
+            speaker.setPitch(v);
+            save(PITCH_KEY, String(v));
+          }}
+          onTestVoice={() => {
+            cancelSpeech();
+            speaker.speak("はい、ディミです。この速さで話します。");
+          }}
+          wakeSupported={wake.supported}
+          wakeOn={wakeOn}
+          setWakeOn={changeWake}
+          followSec={followSec}
+          setFollowSec={(v) => {
+            setFollowSec(v);
+            save(FOLLOW_KEY, String(v));
+          }}
+          hotkeyOn={hotkeyOn}
+          setHotkeyOn={(v) => {
+            setHotkeyOn(v);
+            save(HOTKEY_KEY, v ? "on" : "off");
+          }}
+          place={place}
+          onSavePlace={savePlace}
+          captionSec={captionSec}
+          setCaptionSec={(v) => {
+            setCaptionSec(v);
+            save(CAPTION_KEY, String(v));
+          }}
+        />
       )}
 
       {/* 左端：アプリのショートカット。開いたアプリの小窓 */}
