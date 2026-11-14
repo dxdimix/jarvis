@@ -20,10 +20,10 @@ export type AppEntry = {
 };
 
 export const APPS: AppEntry[] = [
-  { id: "fx", name: "FX", url: "https://fx-signal-monitor-web.vercel.app", login: true, words: ["fx", "エフエックス", "為替"] },
-  { id: "kabu", name: "株", url: "https://kabu-signal-monitor.vercel.app", login: true, words: ["株", "かぶ", "カブ", "株式"] },
+  { id: "fx", name: "FX", url: "https://fx.dxdimix.com", login: true, words: ["fx", "エフエックス", "為替"] },
+  { id: "kabu", name: "株", url: "https://kabu.dxdimix.com", login: true, words: ["株", "かぶ", "カブ", "株式"] },
   { id: "umsheet", name: "UMSheet", url: "https://umsheet.dxdimix.com", login: true, words: ["umsheet", "ユーエムシート", "umシート", "せどり"] },
-  { id: "keiba", name: "競馬", url: "https://keiba-optimizer.vercel.app", login: true, words: ["競馬", "けいば", "ケイバ"] },
+  { id: "keiba", name: "競馬", url: "https://keiba.dxdimix.com", login: true, words: ["競馬", "けいば", "ケイバ"] },
   {
     id: "medical",
     name: "ノーティス（医療機器管理）",

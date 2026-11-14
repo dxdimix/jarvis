@@ -19,12 +19,11 @@ describe("detectOpenCommand", () => {
 
 describe("canEmbed", () => {
   it("dxdimix.com のアプリと、ログインのないアプリは中で開ける", () => {
-    expect(canEmbed(app("umsheet"))).toBe(true);
-    expect(canEmbed(app("nencho"))).toBe(true);
+    for (const id of ["fx", "kabu", "keiba", "umsheet", "nencho"]) expect(canEmbed(app(id))).toBe(true);
   });
 
   it("ドメインが違うログインのあるアプリと、表示を禁止しているアプリは別ウィンドウ", () => {
-    expect(canEmbed(app("fx"))).toBe(false);
+    expect(canEmbed({ ...app("fx"), url: "https://example.vercel.app" })).toBe(false);
     expect(canEmbed(app("medical"))).toBe(false);
   });
 });
