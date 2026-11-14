@@ -161,19 +161,15 @@ $Link.WorkingDirectory = $AppDir
 $Link.Save()
 Ok "スタートアップに登録しました"
 
-# デスクトップに「停止」と「起動」のショートカットを作る
+# デスクトップに「再起動」のショートカットを作る（更新を反映させたいときに使う。以前の「起動」「停止」は片付ける）
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$Link = $Shell.CreateShortcut((Join-Path $Desktop "ディミを起動.lnk"))
-$Link.TargetPath = "wscript.exe"
-$Link.Arguments = "`"$Hidden`""
-$Link.WorkingDirectory = $AppDir
-$Link.Save()
-$Link = $Shell.CreateShortcut((Join-Path $Desktop "ディミを停止.lnk"))
+$Link = $Shell.CreateShortcut((Join-Path $Desktop "ディミを再起動.lnk"))
 $Link.TargetPath = "powershell.exe"
-$Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$StopScript`""
+$Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $AppDir 'windows\restart-dimy.ps1')`""
 $Link.WorkingDirectory = $AppDir
 $Link.Save()
-Ok "デスクトップに「ディミを起動」「ディミを停止」を作りました"
+foreach ($l in @("ディミを起動.lnk", "ディミを停止.lnk")) { $f = Join-Path $Desktop $l; if (Test-Path $f) { Remove-Item $f -Force } }
+Ok "デスクトップに「ディミを再起動」を作りました"
 
 # 以前の名前（キーミス、ジャービス）のショートカットとフォルダを片付ける
 foreach ($old in @("キーミス", "ジャービス")) {

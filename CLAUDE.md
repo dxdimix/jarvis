@@ -25,7 +25,7 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
   - 人格は `agent/lib/prompt.mjs` の PERSONA。`--append-system-prompt-file` で渡す（コマンド引数に日本語を直接書くと Windows で崩れるため）。
   - 二重起動の防止は `agent/lib/single-instance.mjs`（名前付きパイプ / Unix ソケット）。終了コード 3 は「起動し直さなくてよい」の合図。
   - Realtime の Presence（チャンネル `dimy-presence`）で、画面に PC のオンライン / オフラインを知らせる。
-  - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-dimy.ps1`（停止。UTF-8 BOM 付きで保存する）。.bat と .vbs は CRLF（.gitattributes）。
+  - Windows: `setup-windows.ps1`（irm | iex の 1 行で準備と更新）、`windows/start-hidden.vbs`（画面なしで起動、止まったら 10 秒後に再起動、ログは agent/logs/）、`windows/stop-dimy.ps1`（停止。UTF-8 BOM 付きで保存する）、`windows/restart-dimy.ps1`（再起動。BOM 付き。起動後すぐに新しい版を確かめて更新する `DIMY_UPDATE_NOW=1`）。デスクトップのショートカットは「ディミを再起動」1 つ（更新を反映させるときに使う。常駐プログラムが起動のたびに作り、以前の「起動」「停止」を片付ける。`agent/lib/shortcuts.mjs`）。.bat と .vbs は CRLF（.gitattributes）。
   - 自動更新: `agent/lib/updater.mjs`。PC のフォルダの `.version`（setup-windows.ps1 が書く）と GitHub の main を比べ、2 分以上会話がなければ tar.gz を取って上書きし、終了コード 4 で起動し直す。.version がない開発用フォルダでは動かない。main の番号は git の窓口（info/refs）から調べる（API は回数制限があるため）。**main に push したものは、利用者の PC に 1 時間以内に届く**ので、main には動くものだけを入れる。
   - Claude Code に使わせる道具: Web 検索、claude.ai の Google のコネクタ、開発用フォルダ（`--add-dir`）のコードを読む Read / Glob / Grep、ディミの道具（MCP サーバー `agent/tools/mcp-server.mjs`。中身は `agent/tools/appdata.mjs` で、アプリの Supabase を読み取り専用で読む）だけ。Bash・Edit・Write は渡さない（Windows では Bash の許可のルールが効かなかったため、道具は MCP で渡す）。`.env*` などは Read の禁止で読ませない。Claude Code に渡す環境変数からキーを外す（`safeEnv`）。決まりは `docs/monitoring.md`。
   - Realtime の通知は取りこぼすことがあるので、30 秒ごとに返事待ちの発言を確かめる。
@@ -71,6 +71,11 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 - 決まりの文章は `windows/dev-CLAUDE.md`。`setup-dev-windows.ps1` が `dev\CLAUDE.md` に置き、`~\.claude\CLAUDE.md` に短い決まりを足す（印で囲んだ部分だけを入れ替える）。
 - `C:\Users\sike1\dimy` は自動更新される本体。ディミの開発は `dev\dimy` で行う。
 
+## ディミの不具合を調べるとき（Claude Code への決まり）
+- 利用者からディミの動き・返事・読み上げなどについて相談されたら、答える前に、まず `npm run history` を実行して、直近の会話（あなた / ディミの発言と status・エラー）、PC への命令、常駐プログラムの記録を確かめる。推測で答えない。
+- `npm run history` は .env.local の secret キーで本番のデータベースを読むので、利用者のデスクトップ PC（`dev\dimy`、Remote Control のセッションを含む）で動く。クラウドのセッションからは本番に届かないので、そのときは「PC のセッションで確かめる必要がある」と伝える。
+- 表示する件数は `npm run history -- --n 50 --logs 200` で増やせる。
+
 ## 守ること
 - secret キー（`SUPABASE_SECRET_KEY`）は PC の `.env.local` にだけ置く。画面のコード、Vercel、リポジトリに入れない。
 - 画面から使うのは publishable キーだけ。データの保護は RLS で行う。テーブルを足したら必ず RLS とポリシーを書く。
@@ -80,4 +85,5 @@ PC の中に住む個人用 AI アシスタント。コンセプトは「いつ�
 ## コマンド
 - npm run dev / npm run build / npm run lint / npm test
 - npm run agent（PC 常駐プログラム。Windows は start-windows.bat）
+- npm run history（ディミの直近の会話・PC への命令・常駐プログラムの記録を見る）
 - npm run db:push（マイグレーションを Supabase に反映）/ npm run db:types

@@ -19,6 +19,7 @@ import { aliasLegacyEnv } from "./lib/env.mjs";
 import { startBookmarkSync } from "./lib/bookmarks.mjs";
 import { startHotkeyWatch } from "./lib/hotkey.mjs";
 import { runCommand, startPcStateSync } from "./lib/pc.mjs";
+import { ensureDesktopShortcuts } from "./lib/shortcuts.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(ROOT, ".env.local"), quiet: true });
@@ -370,6 +371,9 @@ function startPcCommands(ownerId) {
   setInterval(backlog, 30_000).unref();
 }
 
+// デスクトップのショートカットを今の決まり（「ディミを再起動」1 つ）に合わせる
+ensureDesktopShortcuts({ root: ROOT, log });
+
 // 最初の発言を待たずに Claude Code を起動しておく（1 回目の返事も速くするため）。
 claude.start();
 
@@ -380,12 +384,15 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
+const UPDATE_NOW = process.env.DIMY_UPDATE_NOW === "1";
 if (process.env.DIMY_AUTO_UPDATE !== "off") {
   const enabled = startAutoUpdate({
     root: ROOT,
     repos: UPDATE_REPOS,
     intervalMs: UPDATE_INTERVAL_MS,
-    isIdle: () => inFlight === 0 && Date.now() - lastActivity > IDLE_BEFORE_UPDATE_MS,
+    // デスクトップの「ディミを再起動」から起動したとき（DIMY_UPDATE_NOW=1）は、会話の途切れを待たずにすぐ更新する
+    isIdle: () => inFlight === 0 && (UPDATE_NOW || Date.now() - lastActivity > IDLE_BEFORE_UPDATE_MS),
+    firstCheckMs: UPDATE_NOW ? 3_000 : 60_000,
     log,
     onUpdated: () => {
       claude.stop();

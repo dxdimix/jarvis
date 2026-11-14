@@ -108,7 +108,7 @@ async function findLatest(repos) {
 
 /**
  * 定期的に更新を確かめる。更新できたら onUpdated を呼ぶ（呼ばれた側で起動し直す）。
- * @param {{ root: string, repos: string[], intervalMs: number, isIdle: () => boolean, log: (m: string) => void, onUpdated: (sha: string) => void }} o
+ * @param {{ root: string, repos: string[], intervalMs: number, isIdle: () => boolean, log: (m: string) => void, onUpdated: (sha: string) => void, firstCheckMs?: number }} o
  */
 export function startAutoUpdate(o) {
   const current = readVersion(o.root);
@@ -145,7 +145,7 @@ export function startAutoUpdate(o) {
   }
 
   // 起動 1 分後に 1 回確かめ、その後は intervalMs ごと。新しい版を待っている間は 1 分ごとに会話の途切れを確かめる。
-  setTimeout(tick, 60_000).unref();
+  setTimeout(tick, o.firstCheckMs ?? 60_000).unref();
   setInterval(() => {
     if (latest) tick();
   }, 60_000).unref();

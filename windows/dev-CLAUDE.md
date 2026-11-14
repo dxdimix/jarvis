@@ -29,3 +29,6 @@ DIMY は、利用者の PC に住む AI アシスタント（https://dimy.dxdimi
 ## してはいけないこと
 - `C:\Users\sike1\dimy` はディミの本体で、自動更新で中身が上書きされる。ここでは開発しない。ディミの開発は `C:\Users\sike1\dev\dimy` で行う。
 - 秘密の値（API キー、パスワード、Supabase の secret キーなど）をリポジトリに入れない。`.env.local` などの、Git に入らないファイルに置く。
+
+## ディミ（DIMY）についての相談
+- ディミの動きや返事について相談されたら、`dev\dimy` で `npm run history` を実行して、直近の会話と常駐プログラムの記録を確かめてから答える（推測で答えない）。
