@@ -56,6 +56,9 @@ export type SettingsProps = {
   siteAccounts: Record<string, string>;
   setSiteAccount: (site: string, dir: string | null) => void;
   onRefreshProfiles: () => void;
+  nicknames: Record<string, string>;
+  setNickname: (dir: string, name: string) => void;
+  nicknameError: string;
   // 再起動
   online: boolean | null;
   onRestartPc: () => Promise<{ ok: boolean; result: string }>;
@@ -273,6 +276,26 @@ function DisplayTab(p: SettingsProps) {
 // サイトごとに開くアカウントを決められるもの（"*" は、どれにも当てはまらないとき：ブックマークなど）
 const ACCOUNT_SITES = ["YouTube", "Google", "Gmail", "Google カレンダー", "Google ドライブ", "Google マップ", "Amazon", "X", "Claude", "*"];
 
+/** 呼び名の入力（入力欄から離れたとき・Enter で保存） */
+function NicknameInput({ value, placeholder, onSave }: { value: string; placeholder: string; onSave: (v: string) => void }) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setV(value);
+  }, [value]);
+  return (
+    <input
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => v !== value && onSave(v)}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      placeholder={placeholder}
+      className="w-28 shrink-0 rounded border border-cyan-700/50 bg-slate-900 px-2 py-0.5 text-cyan-100 placeholder:text-slate-600"
+      aria-label="呼び名"
+    />
+  );
+}
+
 function AccountTab(p: SettingsProps) {
   const isMaster = (email: string) => Boolean(email) && email.toLowerCase() === p.masterEmail.toLowerCase();
   const master = p.profiles?.find((pr) => isMaster(pr.email));
@@ -293,13 +316,17 @@ function AccountTab(p: SettingsProps) {
               {p.profiles.map((pr, i) => (
                 <div key={pr.dir} className="flex items-center gap-3 rounded border border-cyan-400/15 px-3 py-1.5 text-xs">
                   <span className="w-20 shrink-0 font-mono text-cyan-300">アカウント{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-cyan-100">{pr.name}</span>
+                  <NicknameInput value={p.nicknames[pr.dir] ?? ""} placeholder="呼び名" onSave={(v) => p.setNickname(pr.dir, v)} />
+                  <span className="min-w-0 flex-1 truncate text-slate-300" title="Chrome のプロフィールの名前">{pr.name}</span>
                   <span className="truncate text-slate-400">{pr.email || "（ログインなし）"}</span>
                   {isMaster(pr.email) && <span className="shrink-0 rounded bg-cyan-400/15 px-1.5 text-[10px] text-cyan-200">マスター</span>}
                 </div>
               ))}
             </div>
-            <p className="mt-1 text-xs text-slate-400">「アカウント2で YouTube を開いて」のように言うと、言ったアカウントで開きます。</p>
+            {p.nicknameError && <p className="mt-1 text-xs text-amber-300">{p.nicknameError}</p>}
+            <p className="mt-1 text-xs text-slate-400">
+              呼び名を付けると、「仕事のアカウントで YouTube を開いて」のように呼び名で頼めます。番号（「アカウント2で」）や Chrome のプロフィールの名前でも頼めます。呼び名はどの端末でも同じです。
+            </p>
           </div>
           <div>
             <div className="mb-1.5 text-cyan-100">サイトごとに開くアカウント</div>
@@ -315,7 +342,7 @@ function AccountTab(p: SettingsProps) {
                     <option value="">{site === "*" ? "マスターアカウント" : "指定なし（「それ以外」と同じ）"}</option>
                     {p.profiles!.map((pr, i) => (
                       <option key={pr.dir} value={pr.dir}>
-                        アカウント{i + 1}：{pr.name}
+                        アカウント{i + 1}：{p.nicknames[pr.dir] ? `${p.nicknames[pr.dir]}（${pr.name}）` : pr.name}
                         {pr.email ? `（${pr.email}）` : ""}
                       </option>
                     ))}

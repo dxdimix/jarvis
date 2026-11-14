@@ -11,6 +11,7 @@ import { run } from "./appdata.mjs";
 import { addNote, listNotes } from "./memory.mjs";
 import { listClaudeSessions, profilesNow, runCommand } from "../lib/pc.mjs";
 import { calendarAdd, calendarEvents } from "./calendar.mjs";
+import { readUserSetting } from "./settings.mjs";
 
 const SERVER = { name: "dimy", version: "1.0.0" };
 
@@ -54,11 +55,22 @@ export const TOOLS = [
   },
   {
     name: "chrome_accounts",
-    description: "PC の Chrome のアカウント（プロフィール）の一覧を返す。番号がアカウントの番号（アカウント1, 2, …）。",
+    description:
+      "PC の Chrome のアカウント（プロフィール）の一覧を返す。番号がアカウントの番号（アカウント1, 2, …）。" +
+      "利用者が付けた呼び名（例: 仕事、病院）も出すので、「〇〇のアカウントで」と言われたら、呼び名かプロフィールの名前で番号を探す。",
     inputSchema: { type: "object", properties: {} },
-    call: () => {
+    call: async () => {
       const list = profilesNow();
-      return list.length ? list.map((p, i) => `アカウント${i + 1}: ${p.name}${p.email ? `（${p.email}）` : ""}`).join("\n") : "Chrome のプロフィールが見つかりません。";
+      const nick = (await readUserSetting("account_nicknames")) ?? {};
+      const master = (process.env.DIMY_OWNER_EMAIL || "").toLowerCase();
+      return list.length
+        ? list
+            .map((p, i) => {
+              const parts = [nick[p.dir] ? `呼び名「${nick[p.dir]}」` : "", `プロフィール名「${p.name}」`, p.email || "ログインなし", p.email.toLowerCase() === master ? "マスターアカウント" : ""];
+              return `アカウント${i + 1}: ${parts.filter(Boolean).join("・")}`;
+            })
+            .join("\n")
+        : "Chrome のプロフィールが見つかりません。";
     },
   },
   {

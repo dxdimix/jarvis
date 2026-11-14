@@ -19,7 +19,7 @@ export type SearchCommand = { site: "google" | "youtube"; query: string; account
  * 「YouTube で猫の動画と検索」→ { site: "youtube", query: "猫の動画" }
  * accountNames: 設定で付けた名前（例: { 2: "仕事用" }）。「仕事用で」でもアカウント 2 になる
  */
-export function parseSearchCommand(text: string, accountNames: Record<number, string> = {}): SearchCommand | null {
+export function parseSearchCommand(text: string, accountNames: Record<number, string | string[]> = {}): SearchCommand | null {
   let t = text.trim().replace(/[。.!！?？]+$/, "");
   // アカウントの指定（「アカウント2で」「仕事用のアカウントで」など）
   const ex = extractAccount(t, accountNames);
@@ -84,13 +84,17 @@ export function parseMoveCommand(text: string): MoveCommand | null {
  * names: アカウントの番号と名前（Chrome のプロフィールの名前）
  * @returns account: 番号（指定がなければ null）、rest: 指定を取り除いた言葉
  */
-export function extractAccount(text: string, names: Record<number, string> = {}): { account: number | null; rest: string } {
+export function extractAccount(text: string, names: Record<number, string | string[]> = {}): { account: number | null; rest: string } {
   const am = text.match(new RegExp(`アカウント\\s*${NUM}\\s*(で|の|から)?`));
   if (am) return { account: toNumber(am[1]), rest: text.replace(am[0], " ").replace(/\s+/g, " ").trim() };
-  for (const [n, name] of Object.entries(names)) {
-    if (!name) continue;
-    const m = text.match(new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(のアカウント|のプロフィール)\\s*(で|の|から)?`));
-    if (m) return { account: Number(n), rest: text.replace(m[0], " ").replace(/\s+/g, " ").trim() };
+  // 呼び名・プロフィールの名前（長いものから先に探す。「仕事」より「仕事用」を先に）
+  const all = Object.entries(names)
+    .flatMap(([n, v]) => (Array.isArray(v) ? v : [v]).filter(Boolean).map((name) => ({ n: Number(n), name: name.trim() })))
+    .filter((x) => x.name)
+    .sort((a, b) => b.name.length - a.name.length);
+  for (const { n, name } of all) {
+    const m = text.match(new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*(のアカウント|のプロフィール|アカウント)\\s*(で|の|から)?`, "i"));
+    if (m) return { account: n, rest: text.replace(m[0], " ").replace(/\s+/g, " ").trim() };
   }
   return { account: null, rest: text };
 }

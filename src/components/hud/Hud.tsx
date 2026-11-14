@@ -29,6 +29,7 @@ import {
   stripBrowser,
 } from "@/lib/commands";
 import { loadPcState, sendPcCommand, type PcState } from "@/lib/pc";
+import { loadUserSetting, NICKNAMES_KEY, saveUserSetting } from "@/lib/userSettings";
 import { boardLabel, loadPins, savePins, sendPin } from "@/lib/pins";
 import { Chat } from "@/components/Chat";
 import { APPS, detectOpenCommand } from "@/lib/apps";
@@ -291,7 +292,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   // 画面だけで済ませる命令（あとで中身を入れる。ここでは入れ物だけ）
   const localCommandRef = useRef<(text: string) => Promise<boolean>>(async () => false);
   const openOutsideRef = useRef<(url: string, title: string, account: number | null) => Promise<void>>(async () => {});
-  const accountNamesRef = useRef<Record<number, string>>({});
+  const accountNamesRef = useRef<Record<number, string[]>>({});
   // 画面と PC だけで済ませる（声でも、会話の欄に文字で打っても同じ）。済ませたら true
   const handleLocal = useCallback(
       async (text: string): Promise<boolean> => {
@@ -460,6 +461,23 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     setSiteAccounts(next);
     save(SITE_ACCOUNTS_KEY, JSON.stringify(next));
   };
+  // Chrome のアカウントの呼び名（表 user_settings。端末をまたいで同じものを使う）
+  const [nicknames, setNicknames] = useState<Record<string, string>>({});
+  const [nicknameError, setNicknameError] = useState("");
+  useEffect(() => {
+    loadUserSetting<Record<string, string>>(supabase, NICKNAMES_KEY).then(({ value, error }) => {
+      if (value) setNicknames(value);
+      if (error) setNicknameError(/user_settings|relation|schema cache/.test(error) ? "呼び名を保存する表がまだありません。SQL Editor で 20261115400000_user_settings.sql を実行してください。" : error);
+    });
+  }, [supabase]);
+  const setNickname = async (dir: string, name: string) => {
+    const next = { ...nicknames };
+    if (name.trim()) next[dir] = name.trim();
+    else delete next[dir];
+    setNicknames(next);
+    const err = await saveUserSetting(supabase, NICKNAMES_KEY, next);
+    setNicknameError(err ? `呼び名を保存できませんでした（${err}）` : "");
+  };
   const refreshPcState = useCallback(() => {
     loadPcState(supabase).then((st) => st && setPcState(st));
   }, [supabase]);
@@ -478,7 +496,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
     const who = account
       ? `アカウント${account}`
       : profile
-        ? (pcState?.chrome_profiles.find((p) => p.dir === profile)?.name ?? profile)
+        ? (nicknames[profile] ?? pcState?.chrome_profiles.find((p) => p.dir === profile)?.name ?? profile)
         : "マスターアカウント";
     logActivity(supabase, "open_chrome", `${title} ${url}（${who}）`);
     if (online) {
@@ -572,8 +590,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
   useEffect(() => {
     localCommandRef.current = localCommand;
     openOutsideRef.current = openOutside;
-    const names: Record<number, string> = {};
-    pcState?.chrome_profiles.forEach((p, i) => (names[i + 1] = p.name));
+    // 声で「〇〇のアカウントで」と言われたときに探す名前（呼び名を先に、次にプロフィールの名前）
+    const names: Record<number, string[]> = {};
+    pcState?.chrome_profiles.forEach((p, i) => (names[i + 1] = [nicknames[p.dir] ?? "", p.name].filter(Boolean)));
     accountNamesRef.current = names;
   });
 
@@ -952,6 +971,9 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
           siteAccounts={siteAccounts}
           setSiteAccount={setSiteAccount}
           onRefreshProfiles={refreshPcState}
+          nicknames={nicknames}
+          setNickname={setNickname}
+          nicknameError={nicknameError}
           online={online}
           onRestartPc={async () => {
             logActivity(supabase, "restart", "設定から PC の DIMY を再起動");

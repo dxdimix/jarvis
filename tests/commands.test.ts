@@ -53,6 +53,11 @@ describe("Claude のセッション", () => {
   it("アカウントの指定", () => {
     expect(extractAccount("アカウント2で FX を開いて")).toEqual({ account: 2, rest: "FX を開いて" });
     expect(extractAccount("個人のアカウントでYouTubeを開いて", { 2: "個人" }).account).toBe(2);
+    // 呼び名（同じプロフィールの名前が複数あっても、呼び名で区別できる）
+    const names = { 6: ["サブ", "圭佑"], 8: ["病院", "圭佑"], 9: ["真知子"] };
+    expect(extractAccount("病院のアカウントでGmailを開いて", names)).toEqual({ account: 8, rest: "Gmailを開いて" });
+    expect(extractAccount("サブアカウントでYouTube開いて", names).account).toBe(6);
+    expect(extractAccount("真知子のアカウントでカレンダー", names).account).toBe(9);
   });
 });
 
