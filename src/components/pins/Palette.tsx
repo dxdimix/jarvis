@@ -130,7 +130,7 @@ export function Palette({ session, n }: { session: Session; n: number }) {
           ))}
         </div>
         <BoardZoomBadge state={board} />
-        <button onClick={() => setAdding(!adding)} className={iconBtn} title="固定ウィンドウを足す" aria-label="固定ウィンドウを足す">
+        <button onClick={() => setAdding(!adding)} data-panel-toggle className={iconBtn} title="固定ウィンドウを足す" aria-label="固定ウィンドウを足す">
           <span className="text-xl leading-none">＋</span>
         </button>
         <button

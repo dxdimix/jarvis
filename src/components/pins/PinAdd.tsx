@@ -7,14 +7,16 @@ import { APPS, canEmbed } from "@/lib/apps";
 import { toUrl } from "@/lib/frame";
 import { AppIcon, CaptureIcon, CloseIcon } from "@/components/hud/Icons";
 import type { PinBoardState } from "./PinBoard";
+import { useDismiss } from "@/hooks/useDismiss";
 
 export function PinAdd({ state, onClose, className = "" }: { state: PinBoardState; onClose: () => void; className?: string }) {
   const [text, setText] = useState("");
   const [msg, setMsg] = useState("");
+  const ref = useDismiss<HTMLDivElement>(onClose); // 外をクリック・Esc で閉じる
   const host = typeof location !== "undefined" && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? location.hostname : "dimy.dxdimix.com";
 
   return (
-    <div className={"w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-cyan-400/30 bg-slate-950/95 p-4 text-sm backdrop-blur " + className}>
+    <div ref={ref} className={"w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-cyan-400/30 bg-slate-950/95 p-4 text-sm backdrop-blur " + className}>
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-xs tracking-[0.3em] text-cyan-300">PIN</span>
         <button onClick={onClose} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { CloseIcon, ExternalIcon } from "./Icons";
+import { useDismiss } from "@/hooks/useDismiss";
 
 type Ev = { id: string; calendar: string; color: string; title: string; start: string; end: string; allDay: boolean; location: string; dimy: boolean; link: string };
 type State = { configured: boolean; connected: boolean; email?: string; events?: Ev[]; error?: string };
@@ -46,6 +47,7 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
   const [selected, setSelected] = useState(today);
   const [state, setState] = useState<State | null>(null);
   const [adding, setAdding] = useState(false);
+  const ref = useDismiss<HTMLDivElement>(onClose); // 外をクリック・Esc で閉じる
   // 今の時刻（読み直すたびに更新。表示のたびに時刻を取らないため）
   const [now, setNow] = useState(() => Date.now());
 
@@ -107,7 +109,7 @@ export function CalendarPanel({ session, onClose }: { session: Session; onClose:
   const selLabel = new Date(`${selected}T00:00:00+09:00`).toLocaleDateString("ja-JP", { timeZone: TZ, month: "long", day: "numeric", weekday: "short" });
 
   return (
-    <div className="dimy-fade-in absolute bottom-24 left-[76px] z-[860] flex max-h-[calc(100dvh-8rem)] w-[460px] max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border border-cyan-400/30 bg-slate-950/[0.97] p-4 text-sm backdrop-blur">
+    <div ref={ref} className="dimy-fade-in absolute bottom-24 left-[76px] z-[860] flex max-h-[calc(100dvh-8rem)] w-[460px] max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border border-cyan-400/30 bg-slate-950/[0.97] p-4 text-sm backdrop-blur">
       <div className="mb-3 flex items-center justify-between">
         <div className="min-w-0">
           <span className="font-mono text-xs tracking-[0.3em] text-cyan-300">CALENDAR</span>

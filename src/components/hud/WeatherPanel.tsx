@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { fetchForecast, weatherLabel, type Forecast, type Place } from "@/lib/weather";
 import { CloseIcon, WeatherIcon } from "./Icons";
+import { useDismiss } from "@/hooks/useDismiss";
 
 const todayKey = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
@@ -20,6 +21,7 @@ function dayLabel(date: string) {
 export function WeatherPanel({ place, onClose }: { place: Place; onClose: () => void }) {
   const [data, setData] = useState<Forecast | null>(null);
   const [error, setError] = useState("");
+  const ref = useDismiss<HTMLDivElement>(onClose); // 外をクリック・Esc で閉じる
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -40,7 +42,7 @@ export function WeatherPanel({ place, onClose }: { place: Place; onClose: () => 
   const pct = (v: number) => (hi === lo ? 50 : ((v - lo) / (hi - lo)) * 100);
 
   return (
-    <div className="dimy-fade-in absolute bottom-24 right-5 z-[860] w-[460px] max-w-[calc(100vw-2.5rem)] rounded-lg border border-cyan-400/30 bg-slate-950/[0.97] p-4 text-sm backdrop-blur">
+    <div ref={ref} className="dimy-fade-in absolute bottom-24 right-5 z-[860] w-[460px] max-w-[calc(100vw-2.5rem)] rounded-lg border border-cyan-400/30 bg-slate-950/[0.97] p-4 text-sm backdrop-blur">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <span className="font-mono text-xs tracking-[0.3em] text-cyan-300">WEATHER</span>

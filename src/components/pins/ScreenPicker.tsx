@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { CloseIcon, PaletteIcon } from "@/components/hud/Icons";
 import { getScreens, openPalette, type ScreenInfo } from "@/lib/screens";
+import { useDismiss } from "@/hooks/useDismiss";
 
 export { openPalette };
 
@@ -14,6 +15,7 @@ export function ScreenPicker({ onClose, className = "" }: { onClose: () => void;
   const [screens, setScreens] = useState<ScreenInfo[] | null>(null);
   const [current, setCurrent] = useState<ScreenInfo | null>(null);
   const [msg, setMsg] = useState("");
+  const ref = useDismiss<HTMLDivElement>(onClose); // 外をクリック・Esc で閉じる
   const supported = typeof window !== "undefined" && "getScreenDetails" in window;
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export function ScreenPicker({ onClose, className = "" }: { onClose: () => void;
   };
 
   return (
-    <div className={"w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-cyan-400/30 bg-slate-950/95 p-4 text-sm backdrop-blur " + className}>
+    <div ref={ref} className={"w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-cyan-400/30 bg-slate-950/95 p-4 text-sm backdrop-blur " + className}>
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-xs tracking-[0.3em] text-cyan-300">PALETTE</span>
         <button onClick={onClose} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">

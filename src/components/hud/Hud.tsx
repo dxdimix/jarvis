@@ -40,6 +40,7 @@ import { Settings } from "./Settings";
 import { HudChrome } from "./HudChrome";
 import { WeatherPanel } from "./WeatherPanel";
 import { CalendarPanel } from "./CalendarPanel";
+import { DismissBox } from "./DismissBox";
 import { DropOverlay, PinBoard, usePinBoard, usePinDrop } from "@/components/pins/PinBoard";
 import { PinAdd } from "@/components/pins/PinAdd";
 import { ScreenPicker } from "@/components/pins/ScreenPicker";
@@ -712,6 +713,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
             setPanel(panel === "bookmarks" ? "none" : "bookmarks");
           }}
           className={iconBtn}
+          data-panel-toggle
           title="ブックマーク"
           aria-label="ブックマーク"
         >
@@ -720,10 +722,10 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
         <Link href="/memory" className={iconBtn} title="覚えていること" aria-label="覚えていること">
           <MemoryIcon className="h-5 w-5" />
         </Link>
-        <button onClick={() => setPanel(panel === "pin" ? "none" : "pin")} className={iconBtn} title="固定ウィンドウを置く" aria-label="固定ウィンドウを置く">
+        <button onClick={() => setPanel(panel === "pin" ? "none" : "pin")} data-panel-toggle className={iconBtn} title="固定ウィンドウを置く" aria-label="固定ウィンドウを置く">
           <PinIcon className="h-5 w-5" />
         </button>
-        <button onClick={() => setPanel(panel === "palette" ? "none" : "palette")} className={iconBtn} title="パレットをほかのモニターに開く" aria-label="パレットを開く">
+        <button onClick={() => setPanel(panel === "palette" ? "none" : "palette")} data-panel-toggle className={iconBtn} title="パレットをほかのモニターに開く" aria-label="パレットを開く">
           <PaletteIcon className="h-5 w-5" />
         </button>
         <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
@@ -737,6 +739,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       {/* 左下：日時 */}
       <button
         onClick={() => setPanel(panel === "calendar" ? "none" : "calendar")}
+        data-panel-toggle
         className="absolute bottom-6 left-6 rounded-lg px-2 py-1 text-left font-mono transition hover:bg-cyan-400/10"
         title="カレンダー（Google カレンダーの予定）"
         aria-label="カレンダーを開く"
@@ -750,6 +753,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
       {weather && (
         <button
           onClick={() => setPanel(panel === "weather" ? "none" : "weather")}
+          data-panel-toggle
           className="absolute bottom-6 right-6 flex items-center gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-cyan-400/10"
           title={`${place?.name} ${weatherLabel(weather.code)}（押すと詳しく）`}
           aria-label="天気の詳細"
@@ -820,7 +824,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
 
       {/* ブックマークの一覧（Chrome のブックマーク。押すと別のタブで開く） */}
       {panel === "bookmarks" && (
-        <div className="absolute right-5 top-20 z-[950] flex max-h-[70vh] w-96 max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border border-cyan-400/30 bg-slate-950/90 p-3 text-sm backdrop-blur">
+        <DismissBox onClose={closePanel} className="absolute right-5 top-20 z-[950] flex max-h-[70vh] w-96 max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border border-cyan-400/30 bg-slate-950/90 p-3 text-sm backdrop-blur">
           <div className="mb-2 flex items-center gap-2">
             <input
               autoFocus
@@ -854,7 +858,7 @@ export function Hud({ supabase, session }: { supabase: SupabaseClient; session: 
                 </li>
               ))}
           </ul>
-        </div>
+        </DismissBox>
       )}
 
       {/* 設定（カテゴリーごとのタブ） */}
