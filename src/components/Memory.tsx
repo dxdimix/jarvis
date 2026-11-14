@@ -76,7 +76,7 @@ export function Memory({ supabase }: { supabase: SupabaseClient }) {
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-widest text-cyan-400">覚えていること</h1>
         <Link href="/" className="text-sm text-slate-400 underline hover:text-slate-200">
-          チャットに戻る
+          戻る
         </Link>
       </header>
       <p className="mb-4 text-sm text-slate-400">

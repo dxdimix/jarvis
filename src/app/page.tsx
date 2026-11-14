@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { LoginForm } from "@/components/LoginForm";
-import { Chat } from "@/components/Chat";
+import { Hud } from "@/components/hud/Hud";
 
+// キーミスのメイン画面（声が中心）。文字入力と会話の履歴は、右上のアイコンで開く。
 export default function Home() {
   const [supabase] = useState(createClient);
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -18,5 +19,5 @@ export default function Home() {
 
   if (session === undefined) return null;
   if (!session) return <LoginForm supabase={supabase} />;
-  return <Chat supabase={supabase} session={session} />;
+  return <Hud supabase={supabase} session={session} />;
 }

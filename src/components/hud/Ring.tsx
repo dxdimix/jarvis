@@ -42,6 +42,12 @@ export function Ring({ mode, tone }: { mode: RingMode; tone: RingTone }) {
           <stop offset="60%" stopColor={col.main} stopOpacity="0.12" />
           <stop offset="100%" stopColor={col.main} stopOpacity="0" />
         </radialGradient>
+        <radialGradient id="kymis-sphere" cx="45%" cy="40%" r="60%">
+          <stop offset="0%" stopColor="#ecfeff" stopOpacity="0.95" />
+          <stop offset="35%" stopColor={col.main} stopOpacity="0.85" />
+          <stop offset="80%" stopColor={col.soft} stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#020617" stopOpacity="0.2" />
+        </radialGradient>
         <filter id="kymis-glow" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="3" result="b" />
           <feMerge>
@@ -108,26 +114,24 @@ export function Ring({ mode, tone }: { mode: RingMode; tone: RingTone }) {
         <path d={arc(106, 200, 290)} fill="none" stroke={col.soft} strokeWidth={3} strokeLinecap="round" />
       </g>
 
-      {/* 中心：光と名前（話し中は脈打つ） */}
+      {/* 中心：光る球体（話し中は脈打ち、待機中は静かに息づく） */}
       <g className={mode === "speaking" ? "kymis-pulse" : "kymis-breathe"} style={{ transformOrigin: `${C}px ${C}px` }}>
-        <circle cx={C} cy={C} r={92} fill="url(#kymis-core)" />
-        <circle cx={C} cy={C} r={80} fill="none" stroke={col.main} strokeOpacity={0.5} />
+        <circle cx={C} cy={C} r={96} fill="url(#kymis-core)" />
+        <circle cx={C} cy={C} r={62} fill="url(#kymis-sphere)" filter="url(#kymis-glow)" />
+        <ellipse cx={C - 18} cy={C - 22} rx={20} ry={12} fill="#ffffff" fillOpacity={0.18} />
+        <circle cx={C} cy={C} r={62} fill="none" stroke={col.main} strokeOpacity={0.7} />
       </g>
       <text
         x={C}
-        y={C - 6}
+        y={C + 84}
         fill={col.main}
-        fontSize={26}
-        fontWeight={700}
-        letterSpacing={4}
+        fillOpacity={0.8}
+        fontSize={11}
+        letterSpacing={5}
         textAnchor="middle"
         dominantBaseline="central"
-        filter="url(#kymis-glow)"
       >
         K.Y.M.I.S
-      </text>
-      <text x={C} y={C + 24} fill={col.main} fillOpacity={0.75} fontSize={12} letterSpacing={3} textAnchor="middle">
-        {modeLabel(mode, tone)}
       </text>
     </svg>
   );

@@ -29,7 +29,7 @@ PC の中に住む個人用 AI アシスタント。利用者は本人のみ。�
   - Realtime の通知は取りこぼすことがあるので、30 秒ごとに返事待ちの発言を確かめる。
   - Realtime につながらない・切れたときは、10 秒後に通信の土台（ソケット）ごと作り直してつなぎ直す（チャンネルだけ作り直しても、壊れたソケットのままではつながらない）。
 - 音声: ブラウザの機能だけを使う（無料）。聞き取りは Web Speech API（`src/hooks/useSpeechRecognition.ts`）、読み上げは speechSynthesis（`src/hooks/useSpeaker.ts`）。返事は 1 文書き終わるごとに読み上げる（`src/lib/speech.ts`）。
-- 全画面表示 `/hud`（`src/components/hud/`）: デスクトップ PC の画面に出しっぱなしにする用。中心のリング（`Ring.tsx`、名前の 5 文字にちなんだ 5 区切りのオリジナルのデザイン。映画などの既存の画面を真似ない）、アプリの状況（準備中）、日時、天気（Open-Meteo。地域は画面で入力し、ブラウザに保存）、PC の状態。声で話しかけられる。
+- メイン画面 `/`（`src/components/hud/`）: 声が中心。中央に光る球体と 5 区切りのリング（`Ring.tsx`、オリジナルのデザイン。映画などの既存の画面を真似ない）、周りを流れるデータ（`DataField.tsx`、canvas）。文字は最小限で、操作はアイコン（`Icons.tsx`）。文字入力と会話の履歴は右上のアイコンで開くパネル（`Chat` の `embedded`）。左下に日時、右下に天気（Open-Meteo。地域は設定で入力し、ブラウザに保存）、左上に PC の状態。`/hud` は同じ画面、`/chat` は文字だけの画面。
 - 成長の仕組み: 返事ごとの評価（`feedback`、チャットの 👍 👎）と、覚えていること（`kymis_notes`、`/memory` で見る・足す・消す）。常駐プログラムは、Claude Code を起動した最初の発言に「覚えていること」と最新 10 件の評価を添える（`buildMemoryBlock`）。どちらかが変わったら次の発言で Claude Code を起動し直す。キーミスは MCP の `memory_add` で自分で書き留められる（キーミス自身の表だけ。利用者の ID は起動時に Supabase の利用者一覧から決める）。
 - 返事は短く（要点を 1〜3 文）。詳しくは聞かれたら話す（人格 `agent/lib/prompt.mjs`）。
 - スマホのホーム画面に追加できる（`src/app/manifest.ts`、アイコンは `src/app/icon.svg` から作った PNG）。

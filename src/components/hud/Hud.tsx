@@ -1,40 +1,58 @@
 "use client";
 
-// キーミスの全画面（デスクトップ PC の画面に出しっぱなしにする用）。
-// 中心にリング、左にアプリの状況、右に日時・天気・PC の状態。下で声で話しかけられる。
+// キーミスのメイン画面（声が中心）。文字は最小限にし、操作はアイコンだけ。
+// - 中央: 光る球体とリング。周りをデータが流れ続ける
+// - 下中央: マイク。左下: 日時。右下: 天気。左上: PC の状態
+// - 右上のアイコン: 会話（履歴と文字入力のパネル）、覚えていること、読み上げ、設定、全画面
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Message } from "@/lib/types";
 import { takeSpeakable } from "@/lib/speech";
 import { fetchWeather, findPlace, weatherLabel, type Place, type Weather } from "@/lib/weather";
 import { useAgentOnline } from "@/hooks/useAgentOnline";
 import { useSpeaker } from "@/hooks/useSpeaker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { Chat } from "@/components/Chat";
 import { Ring, type RingMode, type RingTone } from "./Ring";
+import { DataField } from "./DataField";
+import {
+  ChatIcon,
+  CloseIcon,
+  ExpandIcon,
+  GearIcon,
+  MemoryIcon,
+  MicIcon,
+  PcIcon,
+  ShrinkIcon,
+  SpeakerIcon,
+  StopIcon,
+  WeatherIcon,
+} from "./Icons";
 
 const PLACE_KEY = "kymis.weatherPlace";
+const SPEAK_KEY = "kymis.speak";
+const VOICE_KEY = "kymis.voice";
+const CAPTION_MS = 12_000; // 返事の字幕を出しておく時間
 
-function loadPlace(): Place | null {
+function load(key: string) {
   try {
-    const v = localStorage.getItem(PLACE_KEY);
-    return v ? (JSON.parse(v) as Place) : null;
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-cyan-500/30 bg-slate-950/70 p-4 shadow-[0_0_24px_rgba(34,211,238,0.08)]">
-      <h2 className="mb-3 text-xs font-semibold tracking-[0.3em] text-cyan-400">{title}</h2>
-      {children}
-    </section>
-  );
+function save(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
 }
 
-function Clock() {
+const iconBtn =
+  "grid h-11 w-11 place-items-center rounded-full border border-cyan-400/25 bg-slate-950/50 text-cyan-300 backdrop-blur transition hover:border-cyan-300/70 hover:text-cyan-100 hover:shadow-[0_0_18px_rgba(34,211,238,0.35)]";
+
+function useNow() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -42,104 +60,51 @@ function Clock() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
-  if (!now) return null;
-  const date = now.toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric", weekday: "short" });
-  const time = now.toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  return (
-    <div>
-      <div className="font-mono text-4xl tracking-widest text-cyan-200">{time}</div>
-      <div className="mt-1 text-sm text-cyan-400/80">{date}</div>
-    </div>
-  );
+  return now;
 }
 
-function WeatherPanel() {
-  const [place, setPlace] = useState<Place | null>(null);
+function useWeather(place: Place | null) {
   const [weather, setWeather] = useState<Weather | null>(null);
-  const [input, setInput] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const p = loadPlace();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 保存した地域はブラウザでしか読めないため
-    setPlace(p);
-    if (!p) setEditing(true);
-  }, []);
-
   useEffect(() => {
     if (!place) return;
     let cancelled = false;
-    const load = () =>
+    const run = () =>
       fetchWeather(place)
-        .then((w) => !cancelled && (setWeather(w), setError("")))
-        .catch((e) => !cancelled && setError(e.message));
-    load();
-    const t = setInterval(load, 30 * 60 * 1000); // 30 分ごと
+        .then((w) => !cancelled && setWeather(w))
+        .catch(() => {});
+    run();
+    const t = setInterval(run, 30 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(t);
     };
   }, [place]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim()) return;
-    setError("");
-    try {
-      const p = await findPlace(input.trim());
-      if (!p) return setError("その地名が見つかりませんでした。市区町村の名前で入れてください。");
-      try {
-        localStorage.setItem(PLACE_KEY, JSON.stringify(p));
-      } catch {}
-      setPlace(p);
-      setEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  return (
-    <Panel title="WEATHER  天気">
-      {editing ? (
-        <form onSubmit={save} className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="地域（例: 横浜市）"
-            className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1 text-sm"
-          />
-          <button className="rounded bg-cyan-700 px-3 py-1 text-sm text-white">設定</button>
-        </form>
-      ) : weather ? (
-        <div>
-          <div className="flex items-baseline gap-3">
-            <span className="font-mono text-3xl text-cyan-200">{Math.round(weather.temperature)}℃</span>
-            <span className="text-cyan-300">{weatherLabel(weather.code)}</span>
-          </div>
-          <div className="mt-1 text-sm text-cyan-400/80">
-            最高 {Math.round(weather.max)}℃ / 最低 {Math.round(weather.min)}℃
-            {weather.rain !== null && ` / 降水 ${weather.rain}%`}
-          </div>
-          <button onClick={() => setEditing(true)} className="mt-2 text-xs text-slate-500 underline">
-            {place?.name}（変更）
-          </button>
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">読み込み中…</p>
-      )}
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </Panel>
-  );
+  return weather;
 }
 
-export function Hud({ supabase }: { supabase: SupabaseClient }) {
+export function Hud({ supabase, session }: { supabase: SupabaseClient; session: Session }) {
   const online = useAgentOnline(supabase);
+  const now = useNow();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [error, setError] = useState("");
+  const [panel, setPanel] = useState<"none" | "chat" | "settings">("none");
   const [fullscreen, setFullscreen] = useState(false);
+  const [speakOn, setSpeakOn] = useState(true);
+  const [place, setPlace] = useState<Place | null>(null);
+  const [placeInput, setPlaceInput] = useState("");
+  const [error, setError] = useState("");
+  const [captionUntil, setCaptionUntil] = useState(0);
+  const weather = useWeather(place);
   const liveIds = useRef(new Set<string>());
   const spokenUpTo = useRef(new Map<string, number>());
+
+  // ブラウザに保存した設定を読む（ブラウザでしか読めないため、表示のあとで）
+  useEffect(() => {
+    const p = load(PLACE_KEY);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (p) setPlace(JSON.parse(p) as Place);
+    setSpeakOn(load(SPEAK_KEY) !== "off");
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   // 会話：直近の分を読み、変化を Realtime で受け取る
   useEffect(() => {
@@ -177,7 +142,7 @@ export function Hud({ supabase }: { supabase: SupabaseClient }) {
     };
   }, [supabase]);
 
-  const speaker = useSpeaker(() => {});
+  const speaker = useSpeaker(() => setCaptionUntil(Date.now() + CAPTION_MS), load(VOICE_KEY));
   const { speak, cancel: cancelSpeech } = speaker;
 
   const recognition = useSpeechRecognition(
@@ -198,10 +163,14 @@ export function Hud({ supabase }: { supabase: SupabaseClient }) {
       const final = m.status !== "processing";
       const { chunk, next } = takeSpeakable(m.content, spokenUpTo.current.get(m.id) ?? 0, final);
       spokenUpTo.current.set(m.id, next);
-      if (chunk) speak(chunk);
-      if (final) liveIds.current.delete(m.id);
+      if (speakOn && chunk) speak(chunk);
+      if (final) {
+        liveIds.current.delete(m.id);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- 返事が届いた時刻から字幕を出す
+        setCaptionUntil(Date.now() + CAPTION_MS);
+      }
     }
-  }, [messages, speak]);
+  }, [messages, speak, speakOn]);
 
   // 画面を消さない（ずっと表示しておくため）。対応していないブラウザでは何もしない。
   useEffect(() => {
@@ -224,14 +193,16 @@ export function Hud({ supabase }: { supabase: SupabaseClient }) {
   }, []);
 
   const waiting = messages.some(
-    (m) => (m.role === "user" && (m.status === "pending" || m.status === "processing")) || (m.role === "assistant" && m.status === "processing"),
+    (m) =>
+      (m.role === "user" && (m.status === "pending" || m.status === "processing")) ||
+      (m.role === "assistant" && m.status === "processing"),
   );
   const mode: RingMode = recognition.listening ? "listening" : speaker.speaking ? "speaking" : waiting ? "thinking" : "idle";
   const tone: RingTone = online === false ? "offline" : "normal";
-
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant");
-  const lastReplyAt = lastReply ? new Date(lastReply.created_at).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" }) : null;
+  const showCaption =
+    recognition.listening || speaker.speaking || (lastReply?.status === "processing") || (now !== null && now.getTime() < captionUntil);
+  const caption = recognition.listening ? recognition.interim : lastReply?.content ?? "";
 
   function onMic() {
     if (recognition.listening) return recognition.stop();
@@ -239,93 +210,185 @@ export function Hud({ supabase }: { supabase: SupabaseClient }) {
     recognition.start();
   }
 
+  function toggleSpeak() {
+    const next = !speakOn;
+    setSpeakOn(next);
+    save(SPEAK_KEY, next ? "on" : "off");
+    if (!next) cancelSpeech();
+  }
+
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen().catch(() => {});
   }
 
+  async function savePlace(e: React.FormEvent) {
+    e.preventDefault();
+    if (!placeInput.trim()) return;
+    setError("");
+    try {
+      const p = await findPlace(placeInput.trim());
+      if (!p) return setError("その地名が見つかりませんでした。市区町村の名前で入れてください。");
+      save(PLACE_KEY, JSON.stringify(p));
+      setPlace(p);
+      setPlaceInput("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const time = now?.toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" });
+  const date = now?.toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", weekday: "short" });
+  const pcLabel = online ? "PC オンライン" : online === false ? "PC オフライン" : "PC 確認中";
+
   return (
-    <div className="kymis-grid flex min-h-dvh flex-col text-slate-100">
-      <header className="flex items-center justify-between px-6 py-4 text-xs tracking-[0.3em] text-cyan-400/80">
-        <span>K.Y.M.I.S // キーミス</span>
-        <div className="flex items-center gap-4 tracking-normal">
-          <Link href="/" className="underline hover:text-cyan-200">
-            チャット
-          </Link>
-          <button onClick={toggleFullscreen} className="underline hover:text-cyan-200">
-            {fullscreen ? "全画面をやめる" : "全画面"}
+    <div className="kymis-grid relative h-dvh w-full overflow-hidden text-cyan-100">
+      <DataField mode={mode} tone={tone} />
+
+      {/* 中央：球体とリング */}
+      <div className="absolute inset-0 grid place-items-center">
+        <div className="aspect-square w-[min(62vmin,640px)]">
+          <Ring mode={mode} tone={tone} />
+        </div>
+      </div>
+
+      {/* 字幕（話している・聞いている間と、返事のあと少しだけ） */}
+      <div
+        className={
+          "pointer-events-none absolute inset-x-0 bottom-32 mx-auto max-w-2xl px-6 text-center transition-opacity duration-700 " +
+          (showCaption && caption ? "opacity-100" : "opacity-0")
+        }
+      >
+        <p className="line-clamp-3 text-base leading-relaxed text-cyan-100/90 drop-shadow-[0_0_8px_rgba(2,6,23,0.9)]">{caption}</p>
+      </div>
+
+      {/* 左上：PC の状態 */}
+      <div className="absolute left-5 top-5 flex items-center gap-2" title={pcLabel} aria-label={pcLabel}>
+        <PcIcon className={"h-6 w-6 " + (online ? "text-cyan-300" : "text-slate-500")} />
+        <span
+          className={
+            "h-2 w-2 rounded-full " + (online ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : online === false ? "bg-slate-500" : "bg-amber-400")
+          }
+        />
+      </div>
+
+      {/* 右上：アイコン */}
+      <nav className="absolute right-5 top-5 flex gap-2">
+        <button onClick={() => setPanel(panel === "chat" ? "none" : "chat")} className={iconBtn} title="会話の履歴と文字入力" aria-label="会話の履歴と文字入力">
+          <ChatIcon className="h-5 w-5" />
+        </button>
+        <Link href="/memory" className={iconBtn} title="覚えていること" aria-label="覚えていること">
+          <MemoryIcon className="h-5 w-5" />
+        </Link>
+        <button onClick={toggleSpeak} className={iconBtn} title={speakOn ? "読み上げ オン" : "読み上げ オフ"} aria-label="読み上げの切り替え" aria-pressed={speakOn}>
+          <SpeakerIcon className="h-5 w-5" off={!speakOn} />
+        </button>
+        <button onClick={() => setPanel(panel === "settings" ? "none" : "settings")} className={iconBtn} title="設定" aria-label="設定">
+          <GearIcon className="h-5 w-5" />
+        </button>
+        <button onClick={toggleFullscreen} className={iconBtn} title="全画面" aria-label="全画面の切り替え">
+          {fullscreen ? <ShrinkIcon className="h-5 w-5" /> : <ExpandIcon className="h-5 w-5" />}
+        </button>
+      </nav>
+
+      {/* 左下：日時 */}
+      <div className="absolute bottom-6 left-6 font-mono">
+        <div className="text-2xl tracking-widest text-cyan-200 sm:text-4xl drop-shadow-[0_0_10px_rgba(34,211,238,0.45)]">{time}</div>
+        <div className="mt-1 text-xs tracking-[0.25em] text-cyan-400/70">{date}</div>
+      </div>
+
+      {/* 右下：天気 */}
+      {weather && (
+        <div className="absolute bottom-6 right-6 flex items-center gap-3" title={`${place?.name} ${weatherLabel(weather.code)}`}>
+          <WeatherIcon code={weather.code} className="h-10 w-10 text-cyan-300" />
+          <div className="font-mono">
+            <div className="text-2xl text-cyan-200 sm:text-3xl">{Math.round(weather.temperature)}°</div>
+            <div className="text-xs text-cyan-400/70">
+              {Math.round(weather.max)}° / {Math.round(weather.min)}°{weather.rain !== null && ` ・${weather.rain}%`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 下中央：マイク */}
+      <div className="absolute inset-x-0 bottom-8 flex flex-col items-center">
+        {recognition.supported ? (
+          <button
+            onClick={onMic}
+            aria-label={recognition.listening ? "聞き取りをやめる" : "話しかける"}
+            className={
+              "grid h-16 w-16 place-items-center rounded-full border backdrop-blur transition " +
+              (recognition.listening
+                ? "animate-pulse border-rose-400 bg-rose-500/20 text-rose-200 shadow-[0_0_28px_rgba(244,63,94,0.5)]"
+                : "border-cyan-300/60 bg-cyan-500/10 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.35)] hover:bg-cyan-500/20")
+            }
+          >
+            {recognition.listening ? <StopIcon className="h-7 w-7" /> : <MicIcon className="h-7 w-7" />}
+          </button>
+        ) : (
+          <button onClick={() => setPanel("chat")} className={iconBtn} aria-label="文字で話しかける" title="このブラウザは音声入力に対応していません。文字で話しかけてください">
+            <ChatIcon className="h-5 w-5" />
+          </button>
+        )}
+        {(error || recognition.error) && <p className="mt-2 text-xs text-rose-300">{error || recognition.error}</p>}
+      </div>
+
+      {/* 設定（天気の地域と声） */}
+      {panel === "settings" && (
+        <div className="absolute right-5 top-20 w-80 max-w-[calc(100vw-2.5rem)] rounded-lg border border-cyan-400/30 bg-slate-950/90 p-4 text-sm backdrop-blur">
+          <div className="mb-3 flex justify-end">
+            <button onClick={() => setPanel("none")} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
+              <CloseIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <form onSubmit={savePlace} className="flex gap-2">
+            <WeatherIcon code={0} className="h-6 w-6 shrink-0 text-cyan-300" />
+            <input
+              value={placeInput}
+              onChange={(e) => setPlaceInput(e.target.value)}
+              placeholder={place ? place.name : "天気の地域（例: 横浜市）"}
+              className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
+            />
+            <button className="rounded bg-cyan-700 px-3 text-white">保存</button>
+          </form>
+          {speaker.japaneseVoices.length > 1 && (
+            <div className="mt-3 flex items-center gap-2">
+              <SpeakerIcon className="h-6 w-6 shrink-0 text-cyan-300" />
+              <select
+                value={speaker.voiceName ?? ""}
+                onChange={(e) => {
+                  speaker.setVoiceName(e.target.value);
+                  save(VOICE_KEY, e.target.value);
+                }}
+                className="min-w-0 flex-1 rounded border border-cyan-700/60 bg-slate-900 px-2 py-1"
+                aria-label="声"
+              >
+                {speaker.japaneseVoices.map((v) => (
+                  <option key={v.name} value={v.name}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 会話の履歴と文字入力（右から出るパネル） */}
+      <aside
+        className={
+          "absolute inset-y-0 right-0 z-10 flex w-[440px] max-w-full flex-col border-l border-cyan-400/25 bg-slate-950/95 backdrop-blur transition-transform duration-300 " +
+          (panel === "chat" ? "translate-x-0" : "translate-x-full")
+        }
+        aria-hidden={panel !== "chat"}
+      >
+        <div className="flex justify-end px-4 pt-4">
+          <button onClick={() => setPanel("none")} aria-label="閉じる" className="text-cyan-400 hover:text-cyan-100">
+            <CloseIcon className="h-6 w-6" />
           </button>
         </div>
-      </header>
-
-      <main className="grid flex-1 grid-cols-1 items-center gap-6 px-6 pb-6 lg:grid-cols-[1fr_minmax(320px,560px)_1fr]">
-        {/* 左：アプリの状況 */}
-        <div className="order-2 space-y-4 lg:order-1">
-          <Panel title="APPS  アプリの状況">
-            <p className="text-sm text-slate-400">
-              アプリの見張りは準備中です（次の作業で、自動テスト・公開・画面が開けるかを、ここに一覧で出します）。
-            </p>
-            <p className="mt-2 text-sm text-slate-400">今は、声や文字で「FX の状況は？」などと聞いてください。</p>
-          </Panel>
-        </div>
-
-        {/* 中央：リング */}
-        <div className="order-1 flex flex-col items-center lg:order-2">
-          <div className="aspect-square w-full max-w-[560px]">
-            <Ring mode={mode} tone={tone} />
-          </div>
-          <div className="mt-2 min-h-[4.5rem] w-full max-w-[560px] text-center">
-            {recognition.listening ? (
-              <p className="text-lg text-cyan-200">{recognition.interim || "どうぞ、お話しください"}</p>
-            ) : lastReply ? (
-              <p className="line-clamp-3 text-base text-cyan-100/90">{lastReply.content}</p>
-            ) : null}
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            {recognition.supported ? (
-              <button
-                onClick={onMic}
-                className={
-                  "rounded-full border px-6 py-2 text-sm tracking-widest " +
-                  (recognition.listening ? "animate-pulse border-red-400 text-red-300" : "border-cyan-400/60 text-cyan-200 hover:bg-cyan-500/10")
-                }
-              >
-                {recognition.listening ? "■ 聞き取りをやめる" : "🎤 話しかける"}
-              </button>
-            ) : (
-              <span className="text-xs text-slate-500">このブラウザは音声入力に対応していません（Chrome / Edge で開いてください）</span>
-            )}
-          </div>
-          {(error || recognition.error) && <p className="mt-2 text-sm text-red-400">{error || recognition.error}</p>}
-        </div>
-
-        {/* 右：日時・天気・PC の状態 */}
-        <div className="order-3 space-y-4">
-          <Panel title="TIME  日時">
-            <Clock />
-          </Panel>
-          <WeatherPanel />
-          <Panel title="SYSTEM  PC の状態">
-            <dl className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-slate-400">PC</dt>
-                <dd className={online ? "text-emerald-300" : online === false ? "text-slate-400" : "text-amber-300"}>
-                  {online ? "オンライン" : online === false ? "オフライン" : "確認中"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-slate-400">最後の返事</dt>
-                <dd className="text-cyan-200">{lastReplyAt ?? "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="shrink-0 text-slate-400">最後の発言</dt>
-                <dd className="truncate text-cyan-200">{lastUser?.content ?? "—"}</dd>
-              </div>
-            </dl>
-            <p className="mt-2 text-xs text-slate-500">Claude の利用枠の残りは、Claude アプリの「使用量」で確認できます（ここには出せません）。</p>
-          </Panel>
-        </div>
-      </main>
+        <div className="min-h-0 flex-1">{panel === "chat" && <Chat supabase={supabase} session={session} embedded />}</div>
+      </aside>
     </div>
   );
 }

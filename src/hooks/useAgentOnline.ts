@@ -8,10 +8,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const CHANNELS = ["kymis-presence", "jarvis-presence"];
 
 /** PC の常駐プログラムが動いているか（Realtime の Presence で知らせてくる）。確認中は null。 */
-export function useAgentOnline(supabase: SupabaseClient) {
+/**
+ * @param enabled false のときはつながない（同じ画面で 2 か所からつなぐと、Supabase がエラーにするため）
+ */
+export function useAgentOnline(supabase: SupabaseClient, enabled = true) {
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     const present: Record<string, boolean> = {};
     const channels = CHANNELS.map((name) => {
       const channel = supabase.channel(name);
@@ -28,7 +32,7 @@ export function useAgentOnline(supabase: SupabaseClient) {
     return () => {
       channels.forEach((c) => supabase.removeChannel(c));
     };
-  }, [supabase]);
+  }, [supabase, enabled]);
 
   return online;
 }
